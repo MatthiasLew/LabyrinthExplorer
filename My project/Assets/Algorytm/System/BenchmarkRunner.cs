@@ -114,17 +114,7 @@ namespace Algorytm.System
 
             profiler.Begin();
 
-            if (context.enableVisualization)
-            {
-                profiler.BeginVisualization();
-            }
-
             yield return algorithm.Run(context, metrics, profiler);
-
-            if (context.enableVisualization)
-            {
-                profiler.EndVisualization();
-            }
 
             profiler.End();
 
@@ -135,8 +125,6 @@ namespace Algorytm.System
             {
                 metrics.endReason = metrics.reachedGoal ? "GoalReached" : "FinishedWithoutGoal";
             }
-
-            metrics.FinalizeDerivedMetrics();
 
             targetList.Add(metrics);
             _allMetrics.Add(metrics);

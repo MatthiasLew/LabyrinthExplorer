@@ -122,8 +122,6 @@ namespace Algorytm.Dane
             metrics.processMemoryBeforeBytes = _processMemoryBeforeBytes;
             metrics.processMemoryAfterBytes = processMemoryAfterBytes;
             metrics.processPeakMemoryBytes = Math.Max(_processPeakMemoryBytes, processMemoryAfterBytes);
-
-            metrics.FinalizeDerivedMetrics();
         }
 
         private void UpdatePeakMemory()
