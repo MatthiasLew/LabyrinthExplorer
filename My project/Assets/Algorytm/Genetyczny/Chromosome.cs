@@ -4,6 +4,10 @@ using UnityEngine;
 
 namespace Algorytm.Genetyczny
 {
+    /// <summary>
+    /// Reprezentuje pojedynczy chromosom wykorzystywany przez algorytm genetyczny
+    /// do opisu sekwencji ruchów w labiryncie.
+    /// </summary>
     [Serializable]
     public class Chromosome
     {
@@ -16,14 +20,49 @@ namespace Algorytm.Genetyczny
         private const float DeadEndPenalty = 3f;
         private const float ProgressReward = 1.25f;
 
+        /// <summary>
+        /// Sekwencja genów opisujących kolejne ruchy chromosomu.
+        /// </summary>
         public MoveDirection[] Genes { get; }
+
+        /// <summary>
+        /// Wartość funkcji fitness obliczona dla bieżącego chromosomu.
+        /// </summary>
         public float Fitness { get; private set; }
+
+        /// <summary>
+        /// Określa, czy chromosom doprowadził do osiągnięcia celu.
+        /// </summary>
         public bool ReachedGoal { get; private set; }
+
+        /// <summary>
+        /// Liczba faktycznie wykonanych poprawnych kroków.
+        /// </summary>
         public int StepsTaken { get; private set; }
+
+        /// <summary>
+        /// Liczba wykrytych nawrotów w obrębie ścieżki chromosomu.
+        /// </summary>
         public int BacktrackCount { get; private set; }
+
+        /// <summary>
+        /// Ścieżka zbudowana podczas oceny chromosomu.
+        /// Zawiera pozycję startową oraz kolejne poprawnie osiągnięte pola.
+        /// </summary>
         public List<Vector2Int> Path { get; } = new();
 
+        /// <summary>
+        /// Końcowa pozycja chromosomu po zakończeniu oceny.
+        /// </summary>
         public Vector2Int FinalPosition => Path.Count > 0 ? Path[Path.Count - 1] : Vector2Int.zero;
+
+        /// <summary>
+        /// Inicjalizuje nowy chromosom o podanej długości.
+        /// </summary>
+        /// <param name="length">Liczba genów w chromosomie.</param>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// Rzucany, gdy długość chromosomu jest mniejsza lub równa zero.
+        /// </exception>
         public Chromosome(int length)
         {
             if (length <= 0)
@@ -34,6 +73,11 @@ namespace Algorytm.Genetyczny
             Genes = new MoveDirection[length];
         }
 
+        /// <summary>
+        /// Tworzy losowy chromosom o podanej długości.
+        /// </summary>
+        /// <param name="length">Liczba genów w chromosomie.</param>
+        /// <returns>Nowy losowo zainicjalizowany chromosom.</returns>
         public static Chromosome CreateRandom(int length)
         {
             var chromosome = new Chromosome(length);
@@ -46,6 +90,10 @@ namespace Algorytm.Genetyczny
             return chromosome;
         }
 
+        /// <summary>
+        /// Tworzy pełną kopię bieżącego chromosomu wraz z jego stanem ewaluacji.
+        /// </summary>
+        /// <returns>Nowa instancja chromosomu zawierająca skopiowane dane.</returns>
         public Chromosome Clone()
         {
             var clone = new Chromosome(Genes.Length);
@@ -64,6 +112,33 @@ namespace Algorytm.Genetyczny
             return clone;
         }
 
+        /// <summary>
+        /// Ocenia chromosom w zadanym labiryncie i aktualizuje jego statystyki oraz wartość fitness.
+        /// </summary>
+        /// <param name="maze">Labirynt używany do oceny ruchów chromosomu.</param>
+        /// <param name="start">Pozycja początkowa.</param>
+        /// <param name="finish">Pozycja docelowa.</param>
+        /// <param name="globallyVisited">
+        /// Zbiór pól odwiedzonych globalnie przez inne oceniane chromosomy.
+        /// </param>
+        /// <param name="revisitedCells">
+        /// Licznik ponownych odwiedzeń pól, aktualizowany podczas oceny.
+        /// </param>
+        /// <param name="wallHits">
+        /// Licznik prób wejścia na niepoprawne pole, aktualizowany podczas oceny.
+        /// </param>
+        /// <param name="deadEnds">
+        /// Licznik ślepych zaułków, aktualizowany podczas oceny.
+        /// </param>
+        /// <param name="validMoves">
+        /// Licznik poprawnych ruchów, aktualizowany podczas oceny.
+        /// </param>
+        /// <param name="invalidMoves">
+        /// Licznik niepoprawnych ruchów, aktualizowany podczas oceny.
+        /// </param>
+        /// <exception cref="ArgumentNullException">
+        /// Rzucany, gdy parametr <paramref name="maze"/> lub <paramref name="globallyVisited"/> ma wartość null.
+        /// </exception>
         public void Evaluate(
             MazeGrid maze,
             Vector2Int start,
@@ -159,7 +234,6 @@ namespace Algorytm.Genetyczny
 
             Fitness -= distanceToGoal * DistancePenaltyMultiplier;
             Fitness -= StepsTaken * StepPenaltyMultiplier;
-            Fitness -= BacktrackCount * BacktrackPenalty;
 
             if (!ReachedGoal && distanceToGoal < initialDistance)
             {

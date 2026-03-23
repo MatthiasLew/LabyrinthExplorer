@@ -3,6 +3,10 @@ using System.Diagnostics;
 
 namespace Algorytm.Dane
 {
+    /// <summary>
+    /// Odpowiada za profilowanie działania algorytmu poprzez pomiar czasu wykonania,
+    /// czasu iteracji, czasu wizualizacji oraz zużycia pamięci.
+    /// </summary>
     public class AlgorithmProfiler
     {
         private readonly Stopwatch _totalStopwatch = new();
@@ -23,6 +27,11 @@ namespace Algorytm.Dane
 
         private bool _isVisualizationRunning;
 
+        /// <summary>
+        /// Rozpoczyna profilowanie nowego przebiegu algorytmu.
+        /// Resetuje poprzedni stan pomiarów, uruchamia czyszczenie pamięci
+        /// oraz zapisuje wartości początkowe czasu i pamięci.
+        /// </summary>
         public void Begin()
         {
             GC.Collect();
@@ -45,6 +54,11 @@ namespace Algorytm.Dane
             _totalStopwatch.Restart();
         }
 
+        /// <summary>
+        /// Kończy profilowanie bieżącego przebiegu algorytmu.
+        /// Zatrzymuje aktywny pomiar wizualizacji, zatrzymuje główny stoper
+        /// oraz aktualizuje wartości szczytowego zużycia pamięci.
+        /// </summary>
         public void End()
         {
             if (_isVisualizationRunning)
@@ -56,11 +70,18 @@ namespace Algorytm.Dane
             UpdatePeakMemory();
         }
 
+        /// <summary>
+        /// Rozpoczyna pomiar czasu pojedynczej iteracji algorytmu.
+        /// </summary>
         public void BeginIteration()
         {
             _iterationStopwatch.Restart();
         }
 
+        /// <summary>
+        /// Kończy pomiar czasu pojedynczej iteracji algorytmu
+        /// i aktualizuje zbiorcze statystyki iteracyjne.
+        /// </summary>
         public void EndIteration()
         {
             _iterationStopwatch.Stop();
@@ -79,6 +100,10 @@ namespace Algorytm.Dane
             UpdatePeakMemory();
         }
 
+        /// <summary>
+        /// Rozpoczyna pomiar czasu poświęconego na wizualizację.
+        /// Jeśli pomiar wizualizacji jest już aktywny, metoda nie wykonuje żadnej akcji.
+        /// </summary>
         public void BeginVisualization()
         {
             if (_isVisualizationRunning)
@@ -90,6 +115,10 @@ namespace Algorytm.Dane
             _isVisualizationRunning = true;
         }
 
+        /// <summary>
+        /// Kończy pomiar czasu wizualizacji i dodaje jego wartość do sumarycznego czasu wizualizacji.
+        /// Jeśli pomiar wizualizacji nie był aktywny, metoda nie wykonuje żadnej akcji.
+        /// </summary>
         public void EndVisualization()
         {
             if (!_isVisualizationRunning)
@@ -104,8 +133,20 @@ namespace Algorytm.Dane
             UpdatePeakMemory();
         }
 
+        /// <summary>
+        /// Uzupełnia przekazany obiekt metryk wartościami zebranymi podczas profilowania.
+        /// </summary>
+        /// <param name="metrics">Obiekt metryk, który zostanie uzupełniony wynikami pomiaru.</param>
+        /// <exception cref="ArgumentNullException">
+        /// Rzucany, gdy parametr <paramref name="metrics"/> ma wartość null.
+        /// </exception>
         public void FillMetrics(AlgorithmMetrics metrics)
         {
+            if (metrics == null)
+            {
+                throw new ArgumentNullException(nameof(metrics));
+            }
+
             long managedMemoryAfterBytes = GC.GetTotalMemory(false);
             long processMemoryAfterBytes = GetCurrentProcessMemoryBytes();
 
@@ -124,6 +165,9 @@ namespace Algorytm.Dane
             metrics.processPeakMemoryBytes = Math.Max(_processPeakMemoryBytes, processMemoryAfterBytes);
         }
 
+        /// <summary>
+        /// Aktualizuje zapisane wartości szczytowego zużycia pamięci zarządzanej oraz pamięci procesu.
+        /// </summary>
         private void UpdatePeakMemory()
         {
             long currentManagedMemoryBytes = GC.GetTotalMemory(false);
@@ -139,6 +183,10 @@ namespace Algorytm.Dane
             }
         }
 
+        /// <summary>
+        /// Zwraca bieżące zużycie pamięci procesu w bajtach.
+        /// </summary>
+        /// <returns>Aktualne zużycie pamięci procesu wyrażone w bajtach.</returns>
         private static long GetCurrentProcessMemoryBytes()
         {
             using Process currentProcess = Process.GetCurrentProcess();
