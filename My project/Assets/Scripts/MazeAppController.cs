@@ -20,6 +20,8 @@ public class MazeAppController : MonoBehaviour
     [SerializeField] private TMP_Text infoText;
     [SerializeField] private TMP_Text wynikAText;
     [SerializeField] private TMP_Text wynikBText;
+    [SerializeField] private TMP_Text algorithmATitleText;
+    [SerializeField] private TMP_Text algorithmBTitleText;
 
     [Header("Maze Settings")]
     [SerializeField] private int mazeWidth = 10;
@@ -62,14 +64,20 @@ public class MazeAppController : MonoBehaviour
     [SerializeField] private RectTransform algorithmAGrid;
     [SerializeField] private RectTransform algorithmBGrid;
     [SerializeField] private Color runnerGridBackgroundColor = new Color(0.34f, 0.34f, 0.34f, 1f);
+    [SerializeField] private Color algorithmAPathColor = new Color(0.20f, 0.48f, 1f, 1f);
+    [SerializeField] private Color algorithmBPathColor = new Color(1f, 0.72f, 0.18f, 1f);
 
     private MazeGrid currentMaze;
     private Vector2Int startPosition = new Vector2Int(0, 0);
     private Vector2Int finishPosition = new Vector2Int(9, 9);
 
+    private Coroutine runningComparisonCoroutine;
+
     private bool placeStartNext = true;
     private GridLayoutGroup editorGridLayout;
     private Image[,] tileImages;
+    private Image[,] algorithmATileImages;
+    private Image[,] algorithmBTileImages;
 
     private const float TileSpacing = 2f;
     private const float MinTileSize = 8f;
@@ -123,6 +131,7 @@ public class MazeAppController : MonoBehaviour
     {
         TrySetupMapEditorUI();
         TrySetupRunnerUI();
+        ArrangeResultTexts();
         ResetResultsText();
 
         if (currentMaze == null)
@@ -132,7 +141,7 @@ public class MazeAppController : MonoBehaviour
         }
 
         RebuildRunnerGrids();
-        UpdateInfo("Map editor ready.");
+        UpdateInfo("Mapa gotowa.");
     }
 
     public void CreateDemoMaze()
@@ -178,16 +187,26 @@ public class MazeAppController : MonoBehaviour
         currentMaze = null;
         tileImages = null;
         activeTool = EditorTool.None;
+
+        if (runningComparisonCoroutine != null)
+        {
+            StopCoroutine(runningComparisonCoroutine);
+            runningComparisonCoroutine = null;
+        }
+
         ClearEditorGridVisuals();
+        ClearGridVisuals(algorithmAGrid);
+        ClearGridVisuals(algorithmBGrid);
+
         ResetResultsText();
-        UpdateInfo("Maze cleared.");
+        UpdateInfo("Labirynt usunięty.");
     }
 
     public void SaveMaze()
     {
         if (!EnsureMazeExists())
         {
-            UpdateInfo("No maze to save.");
+            UpdateInfo("Brak labiryntu do zapisu.");
             return;
         }
 
@@ -196,18 +215,18 @@ public class MazeAppController : MonoBehaviour
 
     public void ToggleDrawMode()
     {
-        SetTool(EditorTool.DrawWalls, "Draw mode active. Click tiles to add walls.");
+        SetTool(EditorTool.DrawWalls, "Tryb rysowania ścian.");
     }
 
     public void EnableDeleteMode()
     {
-        SetTool(EditorTool.DeleteWalls, "Delete mode active. Click walls to remove them.");
+        SetTool(EditorTool.DeleteWalls, "Tryb usuwania ścian.");
     }
 
     public void ToggleStartFinishMode()
     {
         string next = placeStartNext ? "START" : "FINISH";
-        SetTool(EditorTool.SetStartFinish, $"Start/Finish mode active. Next click sets {next}.");
+        SetTool(EditorTool.SetStartFinish, $"Tryb start/meta. Następny punkt: {next}.");
     }
 
     public void GenerateRandomMaze()
@@ -241,32 +260,47 @@ public class MazeAppController : MonoBehaviour
 
         RefreshAllTiles();
         RebuildRunnerGrids();
-        UpdateInfo($"Random maze generated (seed: {seedToUse}).");
+        ResetResultsText();
+
+        UpdateInfo($"Wygenerowano labirynt.\nSeed: {seedToUse}");
     }
 
     public void RunComparison()
     {
+        if (runningComparisonCoroutine != null)
+        {
+            UpdateInfo("Benchmark już działa.");
+            return;
+        }
+
         if (benchmarkRunner == null)
         {
-            UpdateInfo("No BenchmarkRunner in scene.");
+            UpdateInfo("Brak BenchmarkRunner w scenie.");
             return;
         }
 
         if (!EnsureMazeExists())
         {
-            UpdateInfo("Create a maze first.");
+            UpdateInfo("Najpierw utwórz labirynt.");
             return;
         }
 
         if (!currentMaze.IsWalkable(startPosition) || !currentMaze.IsWalkable(finishPosition))
         {
-            UpdateInfo("Start and finish must be on walkable tiles.");
+            UpdateInfo("Start i meta muszą być na polach przechodnich.");
             return;
         }
 
         if (startPosition == finishPosition)
         {
-            UpdateInfo("Start and finish cannot be the same tile.");
+            UpdateInfo("Start i meta nie mogą być na tym samym polu.");
+            return;
+        }
+
+        int shortestPathLength = currentMaze.GetShortestPathLength(startPosition, finishPosition);
+        if (shortestPathLength <= 0)
+        {
+            UpdateInfo("Brak poprawnej ścieżki od startu do mety.");
             return;
         }
 
@@ -289,8 +323,17 @@ public class MazeAppController : MonoBehaviour
         var genetic = new GeneticMazeAlgorithm();
         var ant = new AntColonyMazeAlgorithm();
 
-        UpdateInfo("Benchmark in progress...");
-        StartCoroutine(RunComparisonCoroutine(genetic, ant, context));
+        UpdateAlgorithmTitles(genetic.AlgorithmName, ant.AlgorithmName);
+
+        ResetResultsText();
+        RebuildRunnerGrids();
+
+        UpdateInfo(
+            "Status: pomiar w toku\n\n" +
+            $"Najkrótsza ścieżka: {shortestPathLength}\n" +
+            $"Liczba prób: {runCount}");
+
+        runningComparisonCoroutine = StartCoroutine(RunComparisonCoroutine(genetic, ant, context));
     }
 
     private void CreateEditableMaze(int width, int height)
@@ -323,9 +366,7 @@ public class MazeAppController : MonoBehaviour
         RebuildRunnerGrids();
         ResetResultsText();
 
-        UpdateInfo(
-            $"Created maze {mazeWidth}x{mazeHeight}. " +
-            "Active tool: DRAW.");
+        UpdateInfo($"Utworzono labirynt {mazeWidth}x{mazeHeight}.");
     }
 
     private bool EnsureMazeExists()
@@ -427,7 +468,7 @@ public class MazeAppController : MonoBehaviour
                 break;
 
             default:
-                UpdateInfo("Select a tool first.");
+                UpdateInfo("Najpierw wybierz narzędzie.");
                 break;
         }
     }
@@ -436,7 +477,7 @@ public class MazeAppController : MonoBehaviour
     {
         if (position == startPosition || position == finishPosition)
         {
-            UpdateInfo("Cannot edit start/finish tile as wall.");
+            UpdateInfo("Nie można ustawić ściany na starcie lub mecie.");
             return;
         }
 
@@ -448,6 +489,8 @@ public class MazeAppController : MonoBehaviour
 
         currentMaze.SetWalkable(position, shouldBeWalkable);
         RefreshTile(position);
+        RebuildRunnerGrids();
+        ResetResultsText();
     }
 
     private void PlaceStartOrFinish(Vector2Int position)
@@ -463,7 +506,7 @@ public class MazeAppController : MonoBehaviour
         {
             if (position == finishPosition)
             {
-                UpdateInfo("Start cannot be on finish tile.");
+                UpdateInfo("Start nie może być na mecie.");
                 return;
             }
 
@@ -474,13 +517,16 @@ public class MazeAppController : MonoBehaviour
 
             RefreshTile(previousMarker);
             RefreshTile(startPosition);
-            UpdateInfo($"Start set at {startPosition}. Next click sets FINISH.");
+            RebuildRunnerGrids();
+            ResetResultsText();
+
+            UpdateInfo($"Start ustawiony: {startPosition}\nNastępnie ustaw metę.");
             return;
         }
 
         if (position == startPosition)
         {
-            UpdateInfo("Finish cannot be on start tile.");
+            UpdateInfo("Meta nie może być na starcie.");
             return;
         }
 
@@ -491,7 +537,10 @@ public class MazeAppController : MonoBehaviour
 
         RefreshTile(previousMarker);
         RefreshTile(finishPosition);
-        UpdateInfo($"Finish set at {finishPosition}. Next click sets START.");
+        RebuildRunnerGrids();
+        ResetResultsText();
+
+        UpdateInfo($"Meta ustawiona: {finishPosition}\nNastępnie ustaw start.");
     }
 
     private void RefreshAllTiles()
@@ -650,10 +699,7 @@ public class MazeAppController : MonoBehaviour
         BindButton(buttonsRoot, "BtnRandomGen", GenerateRandomMaze);
         BindButton(buttonsRoot, "BtnSave", SaveMaze);
 
-        // Legacy compatibility if older button still exists.
         BindButton(buttonsRoot, "BtnAddMaze", CreateDemoMaze);
-
-        // Optional benchmark trigger button in map editor variant.
         BindButton(mapEditorPanel, "BtnStartMeasurements", RunComparison);
     }
 
@@ -695,6 +741,26 @@ public class MazeAppController : MonoBehaviour
         {
             algorithmBGrid = FindRectTransformByName(mazeRunnerPanel, "AlgorithmBGrid");
         }
+
+        if (algorithmATitleText == null)
+        {
+            algorithmATitleText = FindTMPTextByName(mazeRunnerPanel, "AlgorithmATitle");
+        }
+
+        if (algorithmBTitleText == null)
+        {
+            algorithmBTitleText = FindTMPTextByName(mazeRunnerPanel, "AlgorithmBTitle");
+        }
+
+        if (algorithmATitleText == null)
+        {
+            algorithmATitleText = FindTMPTextByTextValue(mazeRunnerPanel, "Algorytm A");
+        }
+
+        if (algorithmBTitleText == null)
+        {
+            algorithmBTitleText = FindTMPTextByTextValue(mazeRunnerPanel, "Algorytm B");
+        }
     }
 
     private void ApplyRunnerGridBackgrounds()
@@ -725,6 +791,7 @@ public class MazeAppController : MonoBehaviour
         }
 
         BindButton(mazeRunnerPanel, "BtnAddMaze", ShowLoadMazeDialog);
+        BindButton(mazeRunnerPanel, "BtnStartMeasurements", RunComparison);
     }
 
     private void RebuildRunnerGrids()
@@ -736,12 +803,14 @@ public class MazeAppController : MonoBehaviour
 
         TrySetupRunnerUI();
 
-        BuildRunnerGrid(algorithmAGrid);
-        BuildRunnerGrid(algorithmBGrid);
+        BuildRunnerGrid(algorithmAGrid, out algorithmATileImages);
+        BuildRunnerGrid(algorithmBGrid, out algorithmBTileImages);
     }
 
-    private void BuildRunnerGrid(RectTransform targetGrid)
+    private void BuildRunnerGrid(RectTransform targetGrid, out Image[,] runnerTiles)
     {
+        runnerTiles = null;
+
         if (targetGrid == null || currentMaze == null)
         {
             return;
@@ -766,6 +835,8 @@ public class MazeAppController : MonoBehaviour
         layout.startCorner = GridLayoutGroup.Corner.UpperLeft;
         layout.childAlignment = TextAnchor.UpperLeft;
 
+        runnerTiles = new Image[currentMaze.Width, currentMaze.Height];
+
         for (int y = currentMaze.Height - 1; y >= 0; y--)
         {
             for (int x = 0; x < currentMaze.Width; x++)
@@ -773,6 +844,8 @@ public class MazeAppController : MonoBehaviour
                 Vector2Int position = new Vector2Int(x, y);
                 Image tileImage = CreateRunnerTile(targetGrid, position);
                 tileImage.color = GetTileColor(position);
+
+                runnerTiles[x, y] = tileImage;
             }
         }
     }
@@ -813,14 +886,14 @@ public class MazeAppController : MonoBehaviour
 
         if (mazeRunnerPanel == null)
         {
-            UpdateInfo("MazeRunnerPanel not found - cannot open load dialog.");
+            UpdateInfo("Nie znaleziono panelu labiryntu.");
             return;
         }
 
         string[] files = GetSavedMazeFiles();
         if (files.Length == 0)
         {
-            UpdateInfo("No saved mazes found.");
+            UpdateInfo("Brak zapisanych labiryntów.");
             return;
         }
 
@@ -852,7 +925,7 @@ public class MazeAppController : MonoBehaviour
         TMP_FontAsset defaultFont = TMP_Settings.defaultFontAsset;
         if (defaultFont == null || mazeRunnerPanel == null)
         {
-            UpdateInfo("Cannot create maze load dialog.");
+            UpdateInfo("Nie można utworzyć okna ładowania.");
             return;
         }
 
@@ -1117,9 +1190,10 @@ public class MazeAppController : MonoBehaviour
 
             RebuildEditorGridVisuals();
             RebuildRunnerGrids();
+            ResetResultsText();
 
             HideLoadMazeDialog();
-            UpdateInfo($"Loaded maze: {Path.GetFileNameWithoutExtension(filePath)}");
+            UpdateInfo($"Wczytano labirynt:\n{Path.GetFileNameWithoutExtension(filePath)}");
         }
         catch (Exception ex)
         {
@@ -1196,6 +1270,42 @@ public class MazeAppController : MonoBehaviour
     {
         Transform child = FindChildByName(root, nameToFind);
         return child as RectTransform;
+    }
+
+    private static TMP_Text FindTMPTextByName(Transform root, string nameToFind)
+    {
+        Transform child = FindChildByName(root, nameToFind);
+        if (child == null)
+        {
+            return null;
+        }
+
+        return child.GetComponent<TMP_Text>();
+    }
+
+    private static TMP_Text FindTMPTextByTextValue(Transform root, string textValue)
+    {
+        if (root == null)
+        {
+            return null;
+        }
+
+        TMP_Text text = root.GetComponent<TMP_Text>();
+        if (text != null && text.text == textValue)
+        {
+            return text;
+        }
+
+        for (int i = 0; i < root.childCount; i++)
+        {
+            TMP_Text found = FindTMPTextByTextValue(root.GetChild(i), textValue);
+            if (found != null)
+            {
+                return found;
+            }
+        }
+
+        return null;
     }
 
     private static Transform FindChildByName(Transform root, string nameToFind)
@@ -1297,14 +1407,14 @@ public class MazeAppController : MonoBehaviour
     {
         if (mapEditorPanel == null)
         {
-            UpdateInfo("MapEditorPanel not found - cannot open save dialog.");
+            UpdateInfo("Nie znaleziono panelu edytora.");
             return;
         }
 
         EnsureSaveDialogBuilt();
         if (saveDialogOverlay == null)
         {
-            UpdateInfo("Cannot create save dialog.");
+            UpdateInfo("Nie można utworzyć okna zapisu.");
             return;
         }
 
@@ -1342,7 +1452,7 @@ public class MazeAppController : MonoBehaviour
         TMP_FontAsset defaultFont = TMP_Settings.defaultFontAsset;
         if (defaultFont == null)
         {
-            UpdateInfo("TMP default font is missing. Save dialog cannot be created.");
+            UpdateInfo("Brakuje domyślnej czcionki TMP.");
             return;
         }
 
@@ -1537,7 +1647,7 @@ public class MazeAppController : MonoBehaviour
             File.WriteAllText(fullPath, json);
 
             HideSaveDialog();
-            UpdateInfo($"Maze '{mazeName}' saved.");
+            UpdateInfo($"Zapisano labirynt:\n{mazeName}");
         }
         catch (Exception ex)
         {
@@ -1608,73 +1718,327 @@ public class MazeAppController : MonoBehaviour
         return data;
     }
 
-    private void ResetResultsText()
+    private void UpdateAlgorithmTitles(string firstAlgorithmName, string secondAlgorithmName)
     {
-        if (wynikAText != null)
+        if (algorithmATitleText != null)
         {
-            wynikAText.text = "Algorytm A: brak wyniku";
+            algorithmATitleText.text = ShortAlgorithmName(firstAlgorithmName);
+            algorithmATitleText.color = Color.white;
+            algorithmATitleText.fontSize = 18f;
+            algorithmATitleText.enableAutoSizing = false;
+            algorithmATitleText.enableWordWrapping = false;
+            algorithmATitleText.overflowMode = TextOverflowModes.Overflow;
+            algorithmATitleText.alignment = TextAlignmentOptions.Left;
+            algorithmATitleText.raycastTarget = false;
+
+            RectTransform rect = algorithmATitleText.GetComponent<RectTransform>();
+            if (rect != null)
+            {
+                rect.localScale = Vector3.one;
+            }
         }
 
-        if (wynikBText != null)
+        if (algorithmBTitleText != null)
         {
-            wynikBText.text = "Algorytm B: brak wyniku";
+            algorithmBTitleText.text = ShortAlgorithmName(secondAlgorithmName);
+            algorithmBTitleText.color = Color.white;
+            algorithmBTitleText.fontSize = 18f;
+            algorithmBTitleText.enableAutoSizing = false;
+            algorithmBTitleText.enableWordWrapping = false;
+            algorithmBTitleText.overflowMode = TextOverflowModes.Overflow;
+            algorithmBTitleText.alignment = TextAlignmentOptions.Left;
+            algorithmBTitleText.raycastTarget = false;
+
+            RectTransform rect = algorithmBTitleText.GetComponent<RectTransform>();
+            if (rect != null)
+            {
+                rect.localScale = Vector3.one;
+            }
         }
     }
 
-    private IEnumerator RunComparisonCoroutine(
-        IMazeAlgorithm first,
-        IMazeAlgorithm second,
-        MazeAlgorithmContext context)
+    private static string ShortAlgorithmName(string algorithmName)
     {
-        yield return benchmarkRunner.RunComparison(
-            first,
-            second,
-            context,
-            runCount,
-            OnComparisonCompleted);
+        if (string.IsNullOrWhiteSpace(algorithmName))
+        {
+            return "-";
+        }
+
+        if (algorithmName.Contains("Genetic", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Genetyczny";
+        }
+
+        if (algorithmName.Contains("Ant", StringComparison.OrdinalIgnoreCase) ||
+            algorithmName.Contains("Colony", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Mrówkowy";
+        }
+
+        return algorithmName;
     }
 
-    private void OnComparisonCompleted(AlgorithmComparisonResult result)
+    private void PaintBestPathsFromMetrics(AlgorithmComparisonResult result)
     {
-        if (result == null)
+        if (result == null || benchmarkRunner == null)
         {
-            UpdateInfo("Benchmark finished without result.");
             return;
         }
 
-        if (wynikAText != null)
-        {
-            wynikAText.text =
-                $"{result.firstAlgorithmSummary.algorithmName}\n" +
-                $"Success rate: {result.firstAlgorithmSummary.successRate:P0}\n" +
-                $"Avg time: {result.firstAlgorithmSummary.averageTotalRuntimeMs:F2} ms\n" +
-                $"Avg path: {result.firstAlgorithmSummary.averagePathLength:F2}\n" +
-                $"Avg steps: {result.firstAlgorithmSummary.averageStepsTaken:F2}";
-        }
+        AlgorithmMetrics firstMetrics = FindBestMetricsForAlgorithm(result.firstAlgorithmSummary.algorithmName);
+        AlgorithmMetrics secondMetrics = FindBestMetricsForAlgorithm(result.secondAlgorithmSummary.algorithmName);
 
-        if (wynikBText != null)
-        {
-            wynikBText.text =
-                $"{result.secondAlgorithmSummary.algorithmName}\n" +
-                $"Success rate: {result.secondAlgorithmSummary.successRate:P0}\n" +
-                $"Avg time: {result.secondAlgorithmSummary.averageTotalRuntimeMs:F2} ms\n" +
-                $"Avg path: {result.secondAlgorithmSummary.averagePathLength:F2}\n" +
-                $"Avg steps: {result.secondAlgorithmSummary.averageStepsTaken:F2}";
-        }
-
-        UpdateInfo(
-            $"Done. Faster: {result.fasterAlgorithmName} | " +
-            $"More reliable: {result.moreReliableAlgorithmName} | " +
-            $"Better path: {result.betterPathAlgorithmName}");
+        PaintPath(algorithmATileImages, firstMetrics?.finalPath, algorithmAPathColor);
+        PaintPath(algorithmBTileImages, secondMetrics?.finalPath, algorithmBPathColor);
     }
 
-    private void UpdateInfo(string message)
+    private AlgorithmMetrics FindBestMetricsForAlgorithm(string algorithmName)
     {
-        if (infoText != null)
+        if (benchmarkRunner.AllMetrics == null)
         {
-            infoText.text = message;
+            return null;
         }
 
-        Debug.Log(message);
+        AlgorithmMetrics best = null;
+
+        foreach (AlgorithmMetrics metrics in benchmarkRunner.AllMetrics)
+        {
+            if (metrics == null || metrics.algorithmName != algorithmName)
+            {
+                continue;
+            }
+
+            if (metrics.finalPath == null || metrics.finalPath.Count == 0)
+            {
+                continue;
+            }
+
+            if (best == null)
+            {
+                best = metrics;
+                continue;
+            }
+
+            if (metrics.reachedGoal && !best.reachedGoal)
+            {
+                best = metrics;
+                continue;
+            }
+
+            if (metrics.reachedGoal == best.reachedGoal &&
+                metrics.pathEfficiency > best.pathEfficiency)
+            {
+                best = metrics;
+                continue;
+            }
+
+            if (metrics.reachedGoal == best.reachedGoal &&
+                Mathf.Approximately(metrics.pathEfficiency, best.pathEfficiency) &&
+                metrics.totalRuntimeMs < best.totalRuntimeMs)
+            {
+                best = metrics;
+            }
+        }
+
+        return best;
     }
+
+    private void PaintPath(Image[,] targetTiles, IReadOnlyList<Vector2Int> path, Color pathColor)
+    {
+        if (targetTiles == null || path == null || currentMaze == null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < path.Count; i++)
+        {
+            Vector2Int position = path[i];
+
+            if (!currentMaze.IsInside(position))
+            {
+                continue;
+            }
+
+            if (position == startPosition || position == finishPosition)
+            {
+                continue;
+            }
+
+            Image tileImage = targetTiles[position.x, position.y];
+            if (tileImage == null)
+            {
+                continue;
+            }
+
+            tileImage.color = pathColor;
+        }
+    }
+
+   private void ArrangeResultTexts()
+{
+    HideSecondaryResultText(wynikAText);
+    HideSecondaryResultText(wynikBText);
+
+    if (infoText == null)
+    {
+        return;
+    }
+
+    ConfigureResultText(infoText, 20f);
+    ForceReadableResultTextRect(infoText);
+}
+
+private static void HideSecondaryResultText(TMP_Text text)
+{
+    if (text == null)
+    {
+        return;
+    }
+
+    text.text = string.Empty;
+    text.gameObject.SetActive(false);
+}
+
+private static void ConfigureResultText(TMP_Text text, float fontSize)
+{
+    if (text == null)
+    {
+        return;
+    }
+
+    text.gameObject.SetActive(true);
+    text.color = Color.white;
+    text.fontSize = fontSize;
+    text.enableAutoSizing = false;
+
+    // WAŻNE:
+    // false, bo przy zbyt wąskim RectTransform TMP robi pionową kolumnę liter.
+    text.enableWordWrapping = false;
+
+    text.overflowMode = TextOverflowModes.Overflow;
+    text.alignment = TextAlignmentOptions.TopLeft;
+    text.raycastTarget = false;
+    text.lineSpacing = -10f;
+
+    RectTransform rect = text.GetComponent<RectTransform>();
+    if (rect != null)
+    {
+        rect.localScale = Vector3.one;
+    }
+}
+
+private static void ForceReadableResultTextRect(TMP_Text text)
+{
+    if (text == null)
+    {
+        return;
+    }
+
+    RectTransform rect = text.GetComponent<RectTransform>();
+    if (rect == null)
+    {
+        return;
+    }
+
+    // Nie używamy stretch na rodzicu, bo u Ciebie RectTransform najwyraźniej dostaje złą szerokość.
+    // Wymuszamy duży, czytelny obszar tekstu.
+    rect.anchorMin = new Vector2(0f, 1f);
+    rect.anchorMax = new Vector2(0f, 1f);
+    rect.pivot = new Vector2(0f, 1f);
+
+    rect.anchoredPosition = new Vector2(18f, -16f);
+    rect.sizeDelta = new Vector2(520f, 520f);
+    rect.localScale = Vector3.one;
+
+    rect.SetAsLastSibling();
+}
+
+private void ResetResultsText()
+{
+    ArrangeResultTexts();
+
+    if (infoText != null)
+    {
+        infoText.text =
+            "STATUS: oczekiwanie\n\n" +
+            "Kliknij „Rozpocznij Pomiar”,\n" +
+            "aby uruchomić benchmark.";
+    }
+}
+
+private IEnumerator RunComparisonCoroutine(
+    IMazeAlgorithm first,
+    IMazeAlgorithm second,
+    MazeAlgorithmContext context)
+{
+    yield return benchmarkRunner.RunComparison(
+        first,
+        second,
+        context,
+        runCount,
+        OnComparisonCompleted);
+
+    runningComparisonCoroutine = null;
+}
+
+private void OnComparisonCompleted(AlgorithmComparisonResult result)
+{
+    if (result == null)
+    {
+        UpdateInfo("Benchmark zakończył się bez wyniku.");
+        return;
+    }
+
+    UpdateAlgorithmTitles(
+        result.firstAlgorithmSummary.algorithmName,
+        result.secondAlgorithmSummary.algorithmName);
+
+    ArrangeResultTexts();
+
+    if (infoText != null)
+    {
+        infoText.text = BuildBenchmarkReport(result);
+    }
+
+    PaintBestPathsFromMetrics(result);
+
+    Debug.Log(
+        $"Done. Faster: {result.fasterAlgorithmName} | " +
+        $"More reliable: {result.moreReliableAlgorithmName} | " +
+        $"Better path: {result.betterPathAlgorithmName}");
+}
+
+private string BuildBenchmarkReport(AlgorithmComparisonResult result)
+{
+    return
+        $"STATUS: zakończono\n" +
+        $"Szybszy: {ShortAlgorithmName(result.fasterAlgorithmName)}\n" +
+        $"Stabil.: {ShortAlgorithmName(result.moreReliableAlgorithmName)}\n" +
+        $"Ścieżka: {ShortAlgorithmName(result.betterPathAlgorithmName)}\n\n" +
+
+        $"{ShortAlgorithmName(result.firstAlgorithmSummary.algorithmName).ToUpperInvariant()}\n" +
+        $"Skut.: {result.firstAlgorithmSummary.successRate:P0}\n" +
+        $"Czas: {result.firstAlgorithmSummary.averageTotalRuntimeMs:F2} ms\n" +
+        $"Śr. droga: {result.firstAlgorithmSummary.averagePathLength:F2}\n" +
+        $"Śr. kroki: {result.firstAlgorithmSummary.averageStepsTaken:F2}\n\n" +
+
+        $"{ShortAlgorithmName(result.secondAlgorithmSummary.algorithmName).ToUpperInvariant()}\n" +
+        $"Skut.: {result.secondAlgorithmSummary.successRate:P0}\n" +
+        $"Czas: {result.secondAlgorithmSummary.averageTotalRuntimeMs:F2} ms\n" +
+        $"Śr. droga: {result.secondAlgorithmSummary.averagePathLength:F2}\n" +
+        $"Śr. kroki: {result.secondAlgorithmSummary.averageStepsTaken:F2}";
+}
+
+private void UpdateInfo(string message)
+{
+    ArrangeResultTexts();
+
+    if (infoText != null)
+    {
+        infoText.text = message;
+    }
+
+    Debug.Log(message);
+}
+
 }

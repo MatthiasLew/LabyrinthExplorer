@@ -440,6 +440,9 @@ namespace Algorytm.Genetyczny
 
             result.expandedNodes = chromosome.Path.Count;
             result.backtrackCount = chromosome.BacktrackCount;
+            
+            result.finalPath.Clear();
+            result.finalPath.AddRange(chromosome.Path);
         }
 
         /// <summary>
