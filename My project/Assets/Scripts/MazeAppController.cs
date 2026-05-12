@@ -66,7 +66,10 @@ public class MazeAppController : MonoBehaviour
     [SerializeField] private Color runnerGridBackgroundColor = new Color(0.34f, 0.34f, 0.34f, 1f);
     [SerializeField] private Color algorithmAPathColor = new Color(0.20f, 0.48f, 1f, 1f);
     [SerializeField] private Color algorithmBPathColor = new Color(1f, 0.72f, 0.18f, 1f);
-
+    [SerializeField] private Color optimalPathColor = new Color(0.65f, 0.18f, 1f, 1f);
+    [SerializeField] private Color visitedCellColor = new Color(0.45f, 0.65f, 1f, 1f);
+    [SerializeField] private Color currentCellColor = new Color(1f, 1f, 0.25f, 1f);
+    
     private MazeGrid currentMaze;
     private Vector2Int startPosition = new Vector2Int(0, 0);
     private Vector2Int finishPosition = new Vector2Int(9, 9);
@@ -879,6 +882,154 @@ public class MazeAppController : MonoBehaviour
 
         return currentMaze != null && currentMaze.IsWalkable(position) ? walkableColor : wallColor;
     }
+    
+    private void ResetRunnerGridColors(Image[,] grid)
+{
+    if (grid == null || currentMaze == null)
+    {
+        return;
+    }
+
+    for (int x = 0; x < currentMaze.Width; x++)
+    {
+        for (int y = 0; y < currentMaze.Height; y++)
+        {
+            Image tile = grid[x, y];
+
+            if (tile == null)
+            {
+                continue;
+            }
+
+            Vector2Int position = new Vector2Int(x, y);
+            tile.color = GetTileColor(position);
+        }
+    }
+}
+
+private void PaintRunnerCell(Image[,] grid, Vector2Int position, Color color)
+{
+    if (grid == null || currentMaze == null)
+    {
+        return;
+    }
+
+    if (!currentMaze.IsInside(position))
+    {
+        return;
+    }
+
+    if (position == startPosition || position == finishPosition)
+    {
+        return;
+    }
+
+    Image tile = grid[position.x, position.y];
+
+    if (tile == null)
+    {
+        return;
+    }
+
+    tile.color = color;
+}
+
+private void DrawPath(Image[,] grid, IReadOnlyList<Vector2Int> path, Color color)
+{
+    if (grid == null || path == null)
+    {
+        return;
+    }
+
+    foreach (Vector2Int position in path)
+    {
+        PaintRunnerCell(grid, position, color);
+    }
+}
+
+private void DrawBenchmarkPaths(string algorithmAName, string algorithmBName)
+{
+    if (currentMaze == null || benchmarkRunner == null)
+    {
+        return;
+    }
+
+    ResetRunnerGridColors(algorithmATileImages);
+    ResetRunnerGridColors(algorithmBTileImages);
+
+    AlgorithmMetrics bestAlgorithmAResult = GetBestMetricsForAlgorithm(algorithmAName);
+    AlgorithmMetrics bestAlgorithmBResult = GetBestMetricsForAlgorithm(algorithmBName);
+
+    if (bestAlgorithmAResult != null)
+    {
+        DrawPath(algorithmATileImages, bestAlgorithmAResult.finalPath, algorithmAPathColor);
+    }
+
+    if (bestAlgorithmBResult != null)
+    {
+        DrawPath(algorithmBTileImages, bestAlgorithmBResult.finalPath, algorithmBPathColor);
+    }
+
+    List<Vector2Int> optimalPath = currentMaze.GetShortestPath(startPosition, finishPosition);
+
+    DrawPath(algorithmATileImages, optimalPath, optimalPathColor);
+    DrawPath(algorithmBTileImages, optimalPath, optimalPathColor);
+}
+
+private AlgorithmMetrics GetBestMetricsForAlgorithm(string algorithmName)
+{
+    if (benchmarkRunner == null)
+    {
+        return null;
+    }
+
+    AlgorithmMetrics bestMetrics = null;
+
+    foreach (AlgorithmMetrics metrics in benchmarkRunner.AllMetrics)
+    {
+        if (metrics == null)
+        {
+            continue;
+        }
+
+        if (metrics.algorithmName != algorithmName)
+        {
+            continue;
+        }
+
+        if (metrics.finalPath == null || metrics.finalPath.Count == 0)
+        {
+            continue;
+        }
+
+        if (bestMetrics == null || IsBetterMetrics(metrics, bestMetrics))
+        {
+            bestMetrics = metrics;
+        }
+    }
+
+    return bestMetrics;
+}
+
+private static bool IsBetterMetrics(AlgorithmMetrics candidate, AlgorithmMetrics currentBest)
+{
+    if (candidate.reachedGoal != currentBest.reachedGoal)
+    {
+        return candidate.reachedGoal;
+    }
+
+    if (!Mathf.Approximately(candidate.pathEfficiency, currentBest.pathEfficiency))
+    {
+        return candidate.pathEfficiency > currentBest.pathEfficiency;
+    }
+
+    if (candidate.pathLength > 0 && currentBest.pathLength > 0 && candidate.pathLength != currentBest.pathLength)
+    {
+        return candidate.pathLength < currentBest.pathLength;
+    }
+
+    return candidate.totalRuntimeMs < currentBest.totalRuntimeMs;
+}
 
     private void ShowLoadMazeDialog()
     {
@@ -1967,20 +2118,21 @@ private void ResetResultsText()
 }
 
 private IEnumerator RunComparisonCoroutine(
-    IMazeAlgorithm first,
-    IMazeAlgorithm second,
+    IMazeAlgorithm firstAlgorithm,
+    IMazeAlgorithm secondAlgorithm,
     MazeAlgorithmContext context)
 {
     yield return benchmarkRunner.RunComparison(
-        first,
-        second,
+        firstAlgorithm,
+        secondAlgorithm,
         context,
         runCount,
         OnComparisonCompleted);
 
-    runningComparisonCoroutine = null;
-}
+    DrawBenchmarkPaths(firstAlgorithm.AlgorithmName, secondAlgorithm.AlgorithmName);
 
+    runningComparisonCoroutine = null;
+} 
 private void OnComparisonCompleted(AlgorithmComparisonResult result)
 {
     if (result == null)

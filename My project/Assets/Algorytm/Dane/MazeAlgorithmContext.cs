@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using System.Collections.Generic;
 
 namespace Algorytm.Dane
 {
@@ -10,6 +11,8 @@ namespace Algorytm.Dane
     [Serializable]
     public class MazeAlgorithmContext
     {
+        
+        
         /// <summary>
         /// Nazwa badanego labiryntu.
         /// </summary>
@@ -70,6 +73,23 @@ namespace Algorytm.Dane
         /// </summary>
         public FpsTracker fpsTracker;
 
+        /// <summary>
+        /// Wywoływane, gdy algorytm odwiedzi komórkę labiryntu.
+        /// Używane do wizualizacji działania algorytmu.
+        /// </summary>
+        public Action<Vector2Int> onCellVisited;
+
+        /// <summary>
+        /// Wywoływane, gdy algorytm zmieni aktualnie analizowaną komórkę.
+        /// Używane do podświetlania bieżącego pola.
+        /// </summary>
+        public Action<Vector2Int> onCurrentCellChanged;
+
+        /// <summary>
+        /// Wywoływane, gdy algorytm zna końcową ścieżkę.
+        /// Używane do narysowania finalnej trasy.
+        /// </summary>
+        public Action<IReadOnlyList<Vector2Int>> onFinalPathFound;
         /// <summary>
         /// Zwraca dane labiryntu rzutowane do oczekiwanego typu referencyjnego.
         /// </summary>
