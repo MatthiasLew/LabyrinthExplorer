@@ -207,6 +207,63 @@ namespace Algorytm.Genetyczny
 
             return 0;
         }
+        
+        /// <summary>
+        /// Zwraca najkrótszą ścieżkę pomiędzy startem i metą.
+        /// Ścieżka jest wyznaczana algorytmem BFS.
+        /// </summary>
+        /// <param name="start">Pozycja startowa.</param>
+        /// <param name="finish">Pozycja końcowa.</param>
+        /// <returns>Lista pól tworzących najkrótszą ścieżkę od startu do mety.</returns>
+        public List<Vector2Int> GetShortestPath(Vector2Int start, Vector2Int finish)
+        {
+            var path = new List<Vector2Int>();
+
+            if (!IsWalkable(start) || !IsWalkable(finish))
+            {
+                return path;
+            }
+
+            var visited = new HashSet<Vector2Int> { start };
+            var queue = new Queue<Vector2Int>();
+            var previousCells = new Dictionary<Vector2Int, Vector2Int>();
+
+            queue.Enqueue(start);
+
+            while (queue.Count > 0)
+            {
+                Vector2Int current = queue.Dequeue();
+
+                if (current == finish)
+                {
+                    Vector2Int step = finish;
+                    path.Add(step);
+
+                    while (step != start)
+                    {
+                        step = previousCells[step];
+                        path.Add(step);
+                    }
+
+                    path.Reverse();
+                    return path;
+                }
+
+                foreach (Vector2Int neighbor in GetNeighbors(current))
+                {
+                    if (!IsWalkable(neighbor) || visited.Contains(neighbor))
+                    {
+                        continue;
+                    }
+
+                    visited.Add(neighbor);
+                    previousCells[neighbor] = current;
+                    queue.Enqueue(neighbor);
+                }
+            }
+
+            return path;
+        }
 
         /// <summary>
         /// Oblicza odległość Manhattan pomiędzy dwiema pozycjami.

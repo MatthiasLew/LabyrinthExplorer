@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using UnityEngine;
 
 namespace Algorytm.Dane
 {
@@ -121,6 +123,12 @@ namespace Algorytm.Dane
         /// <exception cref="ArgumentNullException">
         /// Rzucany, gdy parametr <paramref name="metrics"/> ma wartość null.
         /// </exception>
+        
+        /// <summary>
+        /// Końcowa ścieżka znaleziona przez algorytm.
+        /// </summary>
+        public List<Vector2Int> finalPath = new();
+        
         public void ApplyTo(AlgorithmMetrics metrics)
         {
             if (metrics == null)
@@ -153,6 +161,10 @@ namespace Algorytm.Dane
             metrics.bestFitness = bestFitness;
             metrics.averageFitness = averageFitness;
             metrics.additionalInfo = additionalInfo;
+            
+            metrics.finalPath = finalPath != null
+                ? new List<Vector2Int>(finalPath)
+                : new List<Vector2Int>();
         }
     }
 }

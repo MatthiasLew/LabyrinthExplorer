@@ -518,6 +518,9 @@ namespace Algorytm.Mrówkowy
 
             result.expandedNodes = ant.Path.Count;
             result.backtrackCount = ant.BacktrackCount;
+            
+            result.finalPath.Clear();
+            result.finalPath.AddRange(ant.Path);
         }
 
         /// <summary>

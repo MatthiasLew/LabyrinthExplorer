@@ -1,100 +1,38 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Algorytm.Dane
 {
     /// <summary>
-    /// Przechowuje dane wejściowe i zależności potrzebne do uruchomienia algorytmu
-    /// wyszukiwania ścieżki w labiryncie.
+    /// Holds input data and callbacks required to run maze algorithms.
     /// </summary>
     [Serializable]
     public class MazeAlgorithmContext
     {
-        /// <summary>
-        /// Nazwa badanego labiryntu.
-        /// </summary>
         public string mazeName;
-
-        /// <summary>
-        /// Typ badanego labiryntu.
-        /// </summary>
         public string mazeType;
-
-        /// <summary>
-        /// Szerokość labiryntu w komórkach.
-        /// </summary>
         public int mazeWidth;
-
-        /// <summary>
-        /// Wysokość labiryntu w komórkach.
-        /// </summary>
         public int mazeHeight;
-
-        /// <summary>
-        /// Pozycja startowa w labiryncie.
-        /// </summary>
         public Vector2Int startPosition;
-
-        /// <summary>
-        /// Pozycja końcowa w labiryncie.
-        /// </summary>
         public Vector2Int finishPosition;
-
-        /// <summary>
-        /// Ziarno generatora liczb losowych użyte podczas działania algorytmu.
-        /// </summary>
         public int randomSeed;
-
-        /// <summary>
-        /// Określa, czy działanie algorytmu powinno być wizualizowane.
-        /// </summary>
         public bool enableVisualization;
-
-        /// <summary>
-        /// Opóźnienie pomiędzy kolejnymi krokami wizualizacji wyrażone w sekundach.
-        /// </summary>
         public float stepDelaySeconds;
-
-        /// <summary>
-        /// Dane reprezentujące strukturę labiryntu przekazywane do algorytmu.
-        /// </summary>
         public object mazeData;
-
-        /// <summary>
-        /// Komponent MonoBehaviour wykorzystywany do obsługi korutyn.
-        /// </summary>
         public MonoBehaviour coroutineHost;
-
-        /// <summary>
-        /// Komponent odpowiedzialny za śledzenie statystyk FPS podczas wizualizacji.
-        /// </summary>
         public FpsTracker fpsTracker;
 
-        /// <summary>
-        /// Wywoływane przed uruchomieniem pojedynczego przebiegu algorytmu.
-        /// Argumenty: nazwa algorytmu, indeks przebiegu.
-        /// </summary>
+        // Newer visualization callbacks used by MazeAppController.
         public Action<string, int> onAlgorithmRunStarted;
-
-        /// <summary>
-        /// Wywoływane po zakończeniu pojedynczego przebiegu algorytmu.
-        /// Argumenty: nazwa algorytmu, indeks przebiegu.
-        /// </summary>
         public Action<string, int> onAlgorithmRunCompleted;
-
-        /// <summary>
-        /// Wywoływane podczas wizualizacji dla odwiedzonego pola.
-        /// </summary>
         public Action<Vector2Int> onVisualizationStep;
 
-        /// <summary>
-        /// Zwraca dane labiryntu rzutowane do oczekiwanego typu referencyjnego.
-        /// </summary>
-        /// <typeparam name="T">Oczekiwany typ danych labiryntu.</typeparam>
-        /// <returns>
-        /// Dane labiryntu rzutowane do typu <typeparamref name="T"/>,
-        /// albo <see langword="null"/>, jeśli rzutowanie nie jest możliwe.
-        /// </returns>
+        // Legacy/alternate callbacks kept for compatibility with merged branches.
+        public Action<Vector2Int> onCellVisited;
+        public Action<Vector2Int> onCurrentCellChanged;
+        public Action<IReadOnlyList<Vector2Int>> onFinalPathFound;
+
         public T GetMazeData<T>() where T : class
         {
             return mazeData as T;

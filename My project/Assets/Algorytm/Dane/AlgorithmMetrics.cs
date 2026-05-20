@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using System.Collections.Generic;
 
 namespace Algorytm.Dane
 {
@@ -318,5 +319,11 @@ namespace Algorytm.Dane
             managedMemoryDeltaBytes = managedMemoryAfterBytes - managedMemoryBeforeBytes;
             processMemoryDeltaBytes = processMemoryAfterBytes - processMemoryBeforeBytes;
         }
+        
+        /// <summary>
+        /// Końcowa ścieżka zwrócona przez algorytm.
+        /// Używana do wizualizacji przebiegu po zakończeniu benchmarku.
+        /// </summary>
+        public List<Vector2Int> finalPath = new();
     }
 }
