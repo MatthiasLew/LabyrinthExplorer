@@ -71,6 +71,23 @@ namespace Algorytm.Dane
         public FpsTracker fpsTracker;
 
         /// <summary>
+        /// Wywoływane przed uruchomieniem pojedynczego przebiegu algorytmu.
+        /// Argumenty: nazwa algorytmu, indeks przebiegu.
+        /// </summary>
+        public Action<string, int> onAlgorithmRunStarted;
+
+        /// <summary>
+        /// Wywoływane po zakończeniu pojedynczego przebiegu algorytmu.
+        /// Argumenty: nazwa algorytmu, indeks przebiegu.
+        /// </summary>
+        public Action<string, int> onAlgorithmRunCompleted;
+
+        /// <summary>
+        /// Wywoływane podczas wizualizacji dla odwiedzonego pola.
+        /// </summary>
+        public Action<Vector2Int> onVisualizationStep;
+
+        /// <summary>
         /// Zwraca dane labiryntu rzutowane do oczekiwanego typu referencyjnego.
         /// </summary>
         /// <typeparam name="T">Oczekiwany typ danych labiryntu.</typeparam>

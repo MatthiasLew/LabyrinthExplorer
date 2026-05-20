@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -36,7 +36,7 @@ public class MazeAppController : MonoBehaviour
 
     [Header("Map Editor Limits")]
     [SerializeField] [Min(2)] private int minMazeSize = 2;
-    [SerializeField] [Min(2)] private int maxMazeSize = 64;
+    [SerializeField] [Min(2)] private int maxMazeSize = 40;
 
     [Header("Random Maze")]
     [SerializeField] [Range(0f, 0.9f)] private float randomWallChance = 0.30f;
@@ -62,6 +62,10 @@ public class MazeAppController : MonoBehaviour
     [SerializeField] private RectTransform algorithmAGrid;
     [SerializeField] private RectTransform algorithmBGrid;
     [SerializeField] private Color runnerGridBackgroundColor = new Color(0.34f, 0.34f, 0.34f, 1f);
+    [SerializeField] private Color traversalColor = new Color(0.95f, 0.82f, 0.22f, 1f);
+
+    [Header("Settings Panel")]
+    [SerializeField] private RectTransform settingsPanel;
 
     private MazeGrid currentMaze;
     private Vector2Int startPosition = new Vector2Int(0, 0);
@@ -74,6 +78,9 @@ public class MazeAppController : MonoBehaviour
     private const float TileSpacing = 2f;
     private const float MinTileSize = 8f;
     private const float FallbackTileSize = 32f;
+    private const float UiReferenceWidth = 2560f;
+    private const float UiReferenceHeight = 1440f;
+    private const float UiMatchWidthHeight = 0.5f;
 
     private enum EditorTool
     {
@@ -94,8 +101,81 @@ public class MazeAppController : MonoBehaviour
     private GameObject loadMazeDialogOverlay;
     private RectTransform loadMazeListContent;
     private TMP_Text loadMazeDialogInfoText;
+    private RectTransform mazeSizeSelectorRoot;
+    private TMP_Dropdown mazeSizeDropdown;
+    private bool isSyncingMazeSizeDropdown;
+
+    private Image[,] algorithmATileImages;
+    private Image[,] algorithmBTileImages;
+
+    private Button resolutionButton;
+    private Button languageButton;
+    private Button fullscreenButton;
+    private TMP_Text resolutionButtonText;
+    private TMP_Text languageButtonText;
+    private TMP_Text fullscreenButtonText;
+    private TMP_Text resolutionLabelText;
+    private TMP_Text fullscreenLabelText;
+    private TMP_Text languageLabelText;
+    private TMP_Text measurementHeaderText;
+    private bool settingsInitialized;
+
+    private GameObject settingsSelectionDialogOverlay;
+    private RectTransform settingsSelectionListContent;
+    private TMP_Text settingsSelectionTitleText;
+    private Action<int> onSettingsOptionSelected;
+
+    private enum AppLanguage
+    {
+        Polski = 0,
+        English = 1
+    }
+
+    private struct ResolutionOption
+    {
+        public int width;
+        public int height;
+
+        public ResolutionOption(int width, int height)
+        {
+            this.width = width;
+            this.height = height;
+        }
+
+        public string Label => width + "x" + height;
+    }
+
+    private static readonly ResolutionOption[] ResolutionOptions =
+    {
+        new ResolutionOption(1280, 720),
+        new ResolutionOption(1440, 810),
+        new ResolutionOption(1920, 1080),
+        new ResolutionOption(2560, 1440)
+    };
+
+    private const string ResolutionPrefKey = "settings_resolution_index";
+    private const string FullscreenPrefKey = "settings_fullscreen";
+    private const string LanguagePrefKey = "settings_language";
+
+    private AppLanguage currentLanguage = AppLanguage.Polski;
+    private int selectedResolutionIndex = 2;
+    private bool isFullscreen = false;
+    private string currentMazeName = string.Empty;
+
+    private enum VisualizationTarget
+    {
+        None,
+        AlgorithmA,
+        AlgorithmB
+    }
+
+    private VisualizationTarget activeVisualizationTarget = VisualizationTarget.None;
+    private readonly HashSet<Vector2Int> algorithmAVisitedTiles = new HashSet<Vector2Int>();
+    private readonly HashSet<Vector2Int> algorithmBVisitedTiles = new HashSet<Vector2Int>();
 
     private const int MinSaveNameLength = 3;
+    private static readonly int[] SupportedMazeSizes = { 10, 20, 30, 40 };
+    private Coroutine pendingResolutionRefreshCoroutine;
 
     [Serializable]
     private struct MazeSaveData
@@ -121,9 +201,13 @@ public class MazeAppController : MonoBehaviour
 
     private void Start()
     {
+        ConfigureAllCanvasScalers();
         TrySetupMapEditorUI();
         TrySetupRunnerUI();
+        TrySetupSettingsUI();
+        InitializeSettingsState();
         ResetResultsText();
+        ApplyLanguageToAllTexts();
 
         if (currentMaze == null)
         {
@@ -178,9 +262,38 @@ public class MazeAppController : MonoBehaviour
         currentMaze = null;
         tileImages = null;
         activeTool = EditorTool.None;
+        SetCurrentMazeName(string.Empty);
         ClearEditorGridVisuals();
         ResetResultsText();
         UpdateInfo("Maze cleared.");
+    }
+
+    public void DeleteMazeFromEditor()
+    {
+        if (!EnsureMazeExists())
+        {
+            return;
+        }
+
+        for (int x = 0; x < currentMaze.Width; x++)
+        {
+            for (int y = 0; y < currentMaze.Height; y++)
+            {
+                currentMaze.SetWalkable(new Vector2Int(x, y), true);
+            }
+        }
+
+        startPosition = new Vector2Int(0, 0);
+        finishPosition = new Vector2Int(currentMaze.Width - 1, currentMaze.Height - 1);
+        currentMaze.SetWalkable(startPosition, true);
+        currentMaze.SetWalkable(finishPosition, true);
+
+        placeStartNext = true;
+        SetCurrentMazeName(string.Empty);
+        RefreshAllTiles();
+        RebuildRunnerGrids();
+        ResetRunnerTraversalVisualization();
+        UpdateInfo("Maze content deleted.");
     }
 
     public void SaveMaze()
@@ -272,23 +385,27 @@ public class MazeAppController : MonoBehaviour
 
         var context = new MazeAlgorithmContext
         {
-            mazeName = "Edited Maze",
+            mazeName = GetActiveMazeDisplayName(),
             mazeType = "Manual / MapEditor",
             mazeWidth = currentMaze.Width,
             mazeHeight = currentMaze.Height,
             startPosition = startPosition,
             finishPosition = finishPosition,
             randomSeed = 12345,
-            enableVisualization = enableVisualization,
-            stepDelaySeconds = stepDelaySeconds,
+            enableVisualization = true,
+            stepDelaySeconds = stepDelaySeconds > 0f ? stepDelaySeconds : 0.02f,
             mazeData = currentMaze,
             coroutineHost = this,
-            fpsTracker = null
+            fpsTracker = null,
+            onAlgorithmRunStarted = OnAlgorithmRunStarted,
+            onAlgorithmRunCompleted = OnAlgorithmRunCompleted,
+            onVisualizationStep = OnAlgorithmVisualizationStep
         };
 
         var genetic = new GeneticMazeAlgorithm();
         var ant = new AntColonyMazeAlgorithm();
 
+        ResetRunnerTraversalVisualization();
         UpdateInfo("Benchmark in progress...");
         StartCoroutine(RunComparisonCoroutine(genetic, ant, context));
     }
@@ -322,6 +439,8 @@ public class MazeAppController : MonoBehaviour
         RebuildEditorGridVisuals();
         RebuildRunnerGrids();
         ResetResultsText();
+        SyncMazeSizeDropdownSelection();
+        SetCurrentMazeName(string.Empty);
 
         UpdateInfo(
             $"Created maze {mazeWidth}x{mazeHeight}. " +
@@ -548,6 +667,7 @@ public class MazeAppController : MonoBehaviour
         ResolveEditorReferences();
         EnsureEditorGridLayout();
         ApplyEditorGridBackground();
+        EnsureMazeSizeDropdown();
         BindEditorButtons();
     }
 
@@ -645,7 +765,7 @@ public class MazeAppController : MonoBehaviour
 
         BindButton(buttonsRoot, "BtnDraw", ToggleDrawMode);
         BindButton(buttonsRoot, "BtnDelete", EnableDeleteMode);
-        BindButton(buttonsRoot, "BtnDeleteMaze", EnableDeleteMode);
+        BindButton(buttonsRoot, "BtnDeleteMaze", DeleteMazeFromEditor);
         BindButton(buttonsRoot, "BtnStartEnd", ToggleStartFinishMode);
         BindButton(buttonsRoot, "BtnRandomGen", GenerateRandomMaze);
         BindButton(buttonsRoot, "BtnSave", SaveMaze);
@@ -657,10 +777,1197 @@ public class MazeAppController : MonoBehaviour
         BindButton(mapEditorPanel, "BtnStartMeasurements", RunComparison);
     }
 
+    private void EnsureMazeSizeDropdown()
+    {
+        if (mapEditorPanel == null)
+        {
+            return;
+        }
+
+        Transform buttonsRoot = buttonsSection != null ? buttonsSection : mapEditorPanel;
+        if (buttonsRoot == null)
+        {
+            return;
+        }
+
+        if (mazeSizeDropdown != null)
+        {
+            ConfigureMazeSizeDropdownOptions();
+            SyncMazeSizeDropdownSelection();
+            return;
+        }
+
+        Transform drawButton = FindChildByName(buttonsRoot, "BtnDraw");
+        Transform dropdownParent = drawButton != null && drawButton.parent != null
+            ? drawButton.parent
+            : buttonsRoot;
+
+        Transform existingSelector = FindChildByName(dropdownParent, "MazeSizeSelector");
+        if (existingSelector != null)
+        {
+            mazeSizeSelectorRoot = existingSelector as RectTransform;
+            mazeSizeDropdown = existingSelector.GetComponentInChildren<TMP_Dropdown>(true);
+            if (drawButton != null && mazeSizeSelectorRoot != null)
+            {
+                mazeSizeSelectorRoot.SetSiblingIndex(drawButton.GetSiblingIndex());
+            }
+
+            if (mazeSizeDropdown != null)
+            {
+                ConfigureMazeSizeDropdownOptions();
+                SyncMazeSizeDropdownSelection();
+            }
+
+            return;
+        }
+
+        BuildMazeSizeDropdownUI(dropdownParent, drawButton);
+        ConfigureMazeSizeDropdownOptions();
+        SyncMazeSizeDropdownSelection();
+    }
+
+    private void BuildMazeSizeDropdownUI(Transform parent, Transform drawButton)
+    {
+        TMP_FontAsset defaultFont = TMP_Settings.defaultFontAsset;
+        if (defaultFont == null)
+        {
+            return;
+        }
+
+        GameObject selectorRootObject = new GameObject(
+            "MazeSizeSelector",
+            typeof(RectTransform),
+            typeof(Image),
+            typeof(LayoutElement),
+            typeof(HorizontalLayoutGroup));
+        RectTransform selectorRootRect = selectorRootObject.GetComponent<RectTransform>();
+        selectorRootRect.SetParent(parent, false);
+        selectorRootRect.anchorMin = new Vector2(0f, 0f);
+        selectorRootRect.anchorMax = new Vector2(0f, 0f);
+        selectorRootRect.pivot = new Vector2(0.5f, 0.5f);
+        selectorRootRect.sizeDelta = new Vector2(500f, 120f);
+
+        if (drawButton != null)
+        {
+            selectorRootRect.SetSiblingIndex(drawButton.GetSiblingIndex());
+        }
+
+        Image selectorRootImage = selectorRootObject.GetComponent<Image>();
+        selectorRootImage.color = new Color(0.12f, 0.12f, 0.12f, 1f);
+
+        LayoutElement selectorLayout = selectorRootObject.GetComponent<LayoutElement>();
+        selectorLayout.preferredHeight = 120f;
+        selectorLayout.preferredWidth = 500f;
+        selectorLayout.flexibleWidth = 1f;
+
+        HorizontalLayoutGroup horizontalLayout = selectorRootObject.GetComponent<HorizontalLayoutGroup>();
+        horizontalLayout.padding = new RectOffset(16, 16, 14, 14);
+        horizontalLayout.spacing = 12f;
+        horizontalLayout.childAlignment = TextAnchor.MiddleLeft;
+        horizontalLayout.childControlWidth = true;
+        horizontalLayout.childControlHeight = true;
+        horizontalLayout.childForceExpandWidth = false;
+        horizontalLayout.childForceExpandHeight = false;
+
+        TextMeshProUGUI label = new GameObject("Label", typeof(RectTransform), typeof(LayoutElement), typeof(TextMeshProUGUI))
+            .GetComponent<TextMeshProUGUI>();
+        RectTransform labelRect = label.GetComponent<RectTransform>();
+        labelRect.SetParent(selectorRootRect, false);
+        labelRect.anchorMin = new Vector2(0f, 0f);
+        labelRect.anchorMax = new Vector2(0f, 1f);
+        labelRect.pivot = new Vector2(0f, 0.5f);
+        labelRect.sizeDelta = new Vector2(230f, 0f);
+
+        LayoutElement labelLayout = label.GetComponent<LayoutElement>();
+        labelLayout.preferredWidth = 230f;
+        labelLayout.flexibleWidth = 0f;
+
+        label.font = defaultFont;
+        label.text = "Wybierz rozmiar";
+        label.fontSize = 28f;
+        label.alignment = TextAlignmentOptions.Left;
+        label.color = Color.white;
+        label.raycastTarget = false;
+
+        GameObject dropdownObject = new GameObject(
+            "SizeDropdown",
+            typeof(RectTransform),
+            typeof(Image),
+            typeof(TMP_Dropdown),
+            typeof(LayoutElement));
+        RectTransform dropdownRect = dropdownObject.GetComponent<RectTransform>();
+        dropdownRect.SetParent(selectorRootRect, false);
+        dropdownRect.anchorMin = new Vector2(0f, 0.5f);
+        dropdownRect.anchorMax = new Vector2(0f, 0.5f);
+        dropdownRect.pivot = new Vector2(0f, 0.5f);
+        dropdownRect.sizeDelta = new Vector2(230f, 92f);
+
+        LayoutElement dropdownLayout = dropdownObject.GetComponent<LayoutElement>();
+        dropdownLayout.preferredWidth = 230f;
+        dropdownLayout.preferredHeight = 92f;
+        dropdownLayout.flexibleWidth = 0f;
+
+        Image dropdownImage = dropdownObject.GetComponent<Image>();
+        dropdownImage.color = new Color(0.2f, 0.2f, 0.2f, 1f);
+
+        TMP_Dropdown dropdown = dropdownObject.GetComponent<TMP_Dropdown>();
+        dropdown.targetGraphic = dropdownImage;
+
+        TextMeshProUGUI captionText = CreateDropdownText(
+            dropdownRect,
+            "CaptionText",
+            defaultFont,
+            TextAlignmentOptions.Left,
+            26f,
+            Color.white);
+        captionText.rectTransform.offsetMin = new Vector2(14f, 0f);
+        captionText.rectTransform.offsetMax = new Vector2(-36f, 0f);
+        captionText.raycastTarget = false;
+
+        TextMeshProUGUI arrowText = CreateDropdownText(
+            dropdownRect,
+            "Arrow",
+            defaultFont,
+            TextAlignmentOptions.Center,
+            30f,
+            Color.white);
+        arrowText.text = "v";
+        arrowText.rectTransform.anchorMin = new Vector2(1f, 0f);
+        arrowText.rectTransform.anchorMax = new Vector2(1f, 1f);
+        arrowText.rectTransform.pivot = new Vector2(1f, 0.5f);
+        arrowText.rectTransform.offsetMin = new Vector2(-32f, 0f);
+        arrowText.rectTransform.offsetMax = new Vector2(-6f, 0f);
+        arrowText.raycastTarget = false;
+
+        GameObject templateObject = new GameObject(
+            "Template",
+            typeof(RectTransform),
+            typeof(Image),
+            typeof(ScrollRect));
+        RectTransform templateRect = templateObject.GetComponent<RectTransform>();
+        templateRect.SetParent(dropdownRect, false);
+        templateRect.anchorMin = new Vector2(0f, 0f);
+        templateRect.anchorMax = new Vector2(1f, 0f);
+        templateRect.pivot = new Vector2(0.5f, 1f);
+        templateRect.anchoredPosition = new Vector2(0f, 2f);
+        templateRect.sizeDelta = new Vector2(0f, 260f);
+
+        Image templateImage = templateObject.GetComponent<Image>();
+        templateImage.color = new Color(0.14f, 0.14f, 0.14f, 1f);
+
+        GameObject viewportObject = new GameObject(
+            "Viewport",
+            typeof(RectTransform),
+            typeof(Image),
+            typeof(Mask));
+        RectTransform viewportRect = viewportObject.GetComponent<RectTransform>();
+        viewportRect.SetParent(templateRect, false);
+        viewportRect.anchorMin = Vector2.zero;
+        viewportRect.anchorMax = Vector2.one;
+        viewportRect.offsetMin = new Vector2(2f, 2f);
+        viewportRect.offsetMax = new Vector2(-2f, -2f);
+
+        Image viewportImage = viewportObject.GetComponent<Image>();
+        viewportImage.color = new Color(0f, 0f, 0f, 0.05f);
+        viewportObject.GetComponent<Mask>().showMaskGraphic = false;
+
+        GameObject contentObject = new GameObject(
+            "Content",
+            typeof(RectTransform),
+            typeof(VerticalLayoutGroup),
+            typeof(ContentSizeFitter));
+        RectTransform contentRect = contentObject.GetComponent<RectTransform>();
+        contentRect.SetParent(viewportRect, false);
+        contentRect.anchorMin = new Vector2(0f, 1f);
+        contentRect.anchorMax = new Vector2(1f, 1f);
+        contentRect.pivot = new Vector2(0.5f, 1f);
+        contentRect.anchoredPosition = Vector2.zero;
+        contentRect.sizeDelta = Vector2.zero;
+
+        VerticalLayoutGroup contentLayout = contentObject.GetComponent<VerticalLayoutGroup>();
+        contentLayout.padding = new RectOffset(0, 0, 0, 0);
+        contentLayout.spacing = 2f;
+        contentLayout.childAlignment = TextAnchor.UpperLeft;
+        contentLayout.childControlWidth = true;
+        contentLayout.childControlHeight = true;
+        contentLayout.childForceExpandWidth = true;
+        contentLayout.childForceExpandHeight = false;
+
+        ContentSizeFitter contentFitter = contentObject.GetComponent<ContentSizeFitter>();
+        contentFitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+        contentFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+        GameObject itemObject = new GameObject(
+            "Item",
+            typeof(RectTransform),
+            typeof(Image),
+            typeof(Toggle),
+            typeof(LayoutElement));
+        RectTransform itemRect = itemObject.GetComponent<RectTransform>();
+        itemRect.SetParent(contentRect, false);
+        itemRect.anchorMin = new Vector2(0f, 1f);
+        itemRect.anchorMax = new Vector2(1f, 1f);
+        itemRect.pivot = new Vector2(0.5f, 1f);
+        itemRect.sizeDelta = new Vector2(0f, 46f);
+
+        LayoutElement itemLayout = itemObject.GetComponent<LayoutElement>();
+        itemLayout.preferredHeight = 46f;
+
+        Image itemImage = itemObject.GetComponent<Image>();
+        itemImage.color = new Color(0.2f, 0.2f, 0.2f, 1f);
+
+        Toggle itemToggle = itemObject.GetComponent<Toggle>();
+        itemToggle.targetGraphic = itemImage;
+
+        TextMeshProUGUI checkmark = CreateDropdownText(
+            itemRect,
+            "Checkmark",
+            defaultFont,
+            TextAlignmentOptions.Center,
+            22f,
+            new Color(0.15f, 0.78f, 0.45f, 1f));
+        checkmark.text = "x";
+        checkmark.rectTransform.anchorMin = new Vector2(0f, 0f);
+        checkmark.rectTransform.anchorMax = new Vector2(0f, 1f);
+        checkmark.rectTransform.pivot = new Vector2(0f, 0.5f);
+        checkmark.rectTransform.offsetMin = new Vector2(10f, 0f);
+        checkmark.rectTransform.offsetMax = new Vector2(34f, 0f);
+        checkmark.raycastTarget = false;
+        itemToggle.graphic = checkmark;
+
+        TextMeshProUGUI itemLabel = CreateDropdownText(
+            itemRect,
+            "ItemLabel",
+            defaultFont,
+            TextAlignmentOptions.Left,
+            24f,
+            Color.white);
+        itemLabel.rectTransform.offsetMin = new Vector2(44f, 0f);
+        itemLabel.rectTransform.offsetMax = new Vector2(-10f, 0f);
+        itemLabel.raycastTarget = false;
+
+        ScrollRect scrollRect = templateObject.GetComponent<ScrollRect>();
+        scrollRect.content = contentRect;
+        scrollRect.viewport = viewportRect;
+        scrollRect.horizontal = false;
+        scrollRect.vertical = true;
+        scrollRect.movementType = ScrollRect.MovementType.Clamped;
+        scrollRect.scrollSensitivity = 14f;
+
+        dropdown.template = templateRect;
+        dropdown.captionText = captionText;
+        dropdown.itemText = itemLabel;
+        dropdown.alphaFadeSpeed = 0.1f;
+        templateObject.SetActive(false);
+
+        mazeSizeSelectorRoot = selectorRootRect;
+        mazeSizeDropdown = dropdown;
+    }
+
+    private static TextMeshProUGUI CreateDropdownText(
+        RectTransform parent,
+        string objectName,
+        TMP_FontAsset font,
+        TextAlignmentOptions alignment,
+        float fontSize,
+        Color color)
+    {
+        TextMeshProUGUI text = new GameObject(objectName, typeof(RectTransform), typeof(TextMeshProUGUI))
+            .GetComponent<TextMeshProUGUI>();
+        RectTransform rect = text.GetComponent<RectTransform>();
+        rect.SetParent(parent, false);
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.offsetMin = Vector2.zero;
+        rect.offsetMax = Vector2.zero;
+
+        text.font = font;
+        text.alignment = alignment;
+        text.fontSize = fontSize;
+        text.color = color;
+        text.text = string.Empty;
+        text.enableWordWrapping = false;
+
+        return text;
+    }
+
+    private void ConfigureMazeSizeDropdownOptions()
+    {
+        if (mazeSizeDropdown == null)
+        {
+            return;
+        }
+
+        var options = new List<TMP_Dropdown.OptionData>(SupportedMazeSizes.Length);
+        for (int i = 0; i < SupportedMazeSizes.Length; i++)
+        {
+            int size = SupportedMazeSizes[i];
+            options.Add(new TMP_Dropdown.OptionData($"{size}x{size}"));
+        }
+
+        mazeSizeDropdown.ClearOptions();
+        mazeSizeDropdown.AddOptions(options);
+        mazeSizeDropdown.onValueChanged.RemoveListener(OnMazeSizeDropdownChanged);
+        mazeSizeDropdown.onValueChanged.AddListener(OnMazeSizeDropdownChanged);
+    }
+
+    private void SyncMazeSizeDropdownSelection()
+    {
+        if (mazeSizeDropdown == null)
+        {
+            return;
+        }
+
+        int targetSize = Mathf.Clamp(Mathf.Min(mazeWidth, mazeHeight), minMazeSize, maxMazeSize);
+        int selectedIndex = FindNearestMazeSizeIndex(targetSize);
+
+        isSyncingMazeSizeDropdown = true;
+        mazeSizeDropdown.SetValueWithoutNotify(selectedIndex);
+        isSyncingMazeSizeDropdown = false;
+    }
+
+    private static int FindNearestMazeSizeIndex(int size)
+    {
+        int bestIndex = 0;
+        int smallestDistance = Mathf.Abs(SupportedMazeSizes[0] - size);
+
+        for (int i = 1; i < SupportedMazeSizes.Length; i++)
+        {
+            int distance = Mathf.Abs(SupportedMazeSizes[i] - size);
+            if (distance < smallestDistance)
+            {
+                bestIndex = i;
+                smallestDistance = distance;
+            }
+        }
+
+        return bestIndex;
+    }
+
+    private void OnMazeSizeDropdownChanged(int index)
+    {
+        if (isSyncingMazeSizeDropdown)
+        {
+            return;
+        }
+
+        if (index < 0 || index >= SupportedMazeSizes.Length)
+        {
+            return;
+        }
+
+        int size = SupportedMazeSizes[index];
+        CreateMazeFromSize(size, size);
+    }
+
+    private void TrySetupSettingsUI()
+    {
+        ResolveSettingsReferences();
+        if (settingsPanel == null)
+        {
+            return;
+        }
+
+        EnsureSettingsRows();
+        BindSettingsButtons();
+        EnsureSettingsSelectionDialogBuilt();
+        UpdateSettingsControlsText();
+    }
+
+    private void ResolveSettingsReferences()
+    {
+        if (settingsPanel == null)
+        {
+            settingsPanel = FindSettingsPanelWithControls();
+        }
+
+        if (settingsPanel == null)
+        {
+            return;
+        }
+
+        if (resolutionButton == null)
+        {
+            resolutionButton = FindButtonInSettings("BtnResolution", "Rozdzielczość", "Resolution");
+        }
+
+        if (fullscreenButton == null)
+        {
+            fullscreenButton = FindButtonInSettings("BtnDisplay", "Tryb", "Display");
+        }
+
+        if (fullscreenButton == null)
+        {
+            fullscreenButton = FindButtonInSettings("BtnDisplayMode", "Tryb", "Display");
+        }
+
+        if (fullscreenButton == null)
+        {
+            fullscreenButton = FindButtonInSettings("BtnFullscreen", "Tryb", "Fullscreen");
+            if (fullscreenButton == null)
+            {
+                fullscreenButton = FindButtonInSettings("BtnDeleteMaze", "Tryb", "Fullscreen");
+            }
+        }
+
+        if (languageButton == null)
+        {
+            languageButton = FindButtonInSettings("BtnLanguage", "Język", "Language");
+        }
+
+        if (resolutionButton == null)
+        {
+            resolutionButton = FindButtonInSettings("BtnStartMeasurements", "Rozdzielczość", "Resolution");
+        }
+
+        if (languageButton == null)
+        {
+            languageButton = FindButtonInSettings("BtnAddMaze", "Język", "Language");
+        }
+
+        if (resolutionButton != null)
+        {
+            resolutionButtonText = resolutionButton.GetComponentInChildren<TMP_Text>(true);
+        }
+
+        if (languageButton != null)
+        {
+            languageButtonText = languageButton.GetComponentInChildren<TMP_Text>(true);
+        }
+
+        if (fullscreenButton != null)
+        {
+            fullscreenButtonText = fullscreenButton.GetComponentInChildren<TMP_Text>(true);
+        }
+    }
+
+    private RectTransform FindSettingsPanelWithControls()
+    {
+        RectTransform[] candidates = Resources.FindObjectsOfTypeAll<RectTransform>();
+        foreach (RectTransform candidate in candidates)
+        {
+            if (candidate == null || candidate.name != "SettingsPanel")
+            {
+                continue;
+            }
+
+            if (!candidate.gameObject.scene.IsValid())
+            {
+                continue;
+            }
+
+            if (FindChildByName(candidate, "BtnStartMeasurements") != null ||
+                FindChildByName(candidate, "BtnResolution") != null)
+            {
+                return candidate;
+            }
+        }
+
+        return FindRectTransformInScene("SettingsPanel");
+    }
+
+    private Button FindButtonInSettings(string buttonName, string fallbackLabelPl, string fallbackLabelEn)
+    {
+        if (settingsPanel == null)
+        {
+            return null;
+        }
+
+        Transform byName = FindChildByName(settingsPanel, buttonName);
+        if (byName != null)
+        {
+            Button namedButton = byName.GetComponent<Button>();
+            if (namedButton != null)
+            {
+                return namedButton;
+            }
+        }
+
+        Button[] allButtons = settingsPanel.GetComponentsInChildren<Button>(true);
+        for (int i = 0; i < allButtons.Length; i++)
+        {
+            Button button = allButtons[i];
+            TMP_Text text = button.GetComponentInChildren<TMP_Text>(true);
+            if (text == null || string.IsNullOrWhiteSpace(text.text))
+            {
+                continue;
+            }
+
+            if (text.text.IndexOf(fallbackLabelPl, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                text.text.IndexOf(fallbackLabelEn, StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return button;
+            }
+        }
+
+        return null;
+    }
+
+    private void EnsureSettingsRows()
+    {
+        if (settingsPanel == null)
+        {
+            return;
+        }
+
+        if (resolutionButton != null)
+        {
+            resolutionLabelText = EnsureLabeledRowForButton(resolutionButton, "ResolutionRow", resolutionLabelText);
+        }
+
+        if (fullscreenButton != null)
+        {
+            fullscreenLabelText = EnsureLabeledRowForButton(fullscreenButton, "DisplayModeRow", fullscreenLabelText);
+        }
+
+        if (languageButton != null)
+        {
+            languageLabelText = EnsureLabeledRowForButton(languageButton, "LanguageRow", languageLabelText);
+        }
+
+        RectTransform resolutionRow = resolutionButton != null ? resolutionButton.transform.parent as RectTransform : null;
+        RectTransform fullscreenRow = fullscreenButton != null ? fullscreenButton.transform.parent as RectTransform : null;
+        RectTransform languageRow = languageButton != null ? languageButton.transform.parent as RectTransform : null;
+
+        if (resolutionRow != null && fullscreenRow != null)
+        {
+            fullscreenRow.SetSiblingIndex(resolutionRow.GetSiblingIndex() + 1);
+        }
+
+        if (fullscreenRow != null && languageRow != null)
+        {
+            languageRow.SetSiblingIndex(fullscreenRow.GetSiblingIndex() + 1);
+        }
+    }
+
+    private TMP_Text EnsureLabeledRowForButton(Button button, string rowName, TMP_Text existingLabel)
+    {
+        if (button == null)
+        {
+            return existingLabel;
+        }
+
+        RectTransform buttonRect = button.transform as RectTransform;
+        if (buttonRect == null)
+        {
+            return existingLabel;
+        }
+
+        RectTransform row = buttonRect.parent as RectTransform;
+        if (row == null || row.name != rowName)
+        {
+            int originalSibling = buttonRect.GetSiblingIndex();
+            RectTransform originalParent = buttonRect.parent as RectTransform;
+
+            GameObject rowObject = new GameObject(
+                rowName,
+                typeof(RectTransform),
+                typeof(LayoutElement),
+                typeof(HorizontalLayoutGroup));
+            row = rowObject.GetComponent<RectTransform>();
+            row.SetParent(originalParent, false);
+            row.SetSiblingIndex(originalSibling);
+            row.sizeDelta = new Vector2(1100f, 100f);
+
+            LayoutElement rowLayout = rowObject.GetComponent<LayoutElement>();
+            rowLayout.preferredHeight = 100f;
+            rowLayout.preferredWidth = 1100f;
+            rowLayout.flexibleWidth = 1f;
+
+            HorizontalLayoutGroup hLayout = rowObject.GetComponent<HorizontalLayoutGroup>();
+            hLayout.padding = new RectOffset(24, 24, 0, 0);
+            hLayout.spacing = 24f;
+            hLayout.childAlignment = TextAnchor.MiddleLeft;
+            hLayout.childControlWidth = true;
+            hLayout.childControlHeight = true;
+            hLayout.childForceExpandWidth = false;
+            hLayout.childForceExpandHeight = false;
+
+            buttonRect.SetParent(row, false);
+
+            LayoutElement buttonLayout = button.gameObject.GetComponent<LayoutElement>();
+            if (buttonLayout == null)
+            {
+                buttonLayout = button.gameObject.AddComponent<LayoutElement>();
+            }
+
+            buttonLayout.preferredWidth = 520f;
+            buttonLayout.preferredHeight = 100f;
+            buttonLayout.flexibleWidth = 0f;
+
+            GameObject labelObject = new GameObject("Label", typeof(RectTransform), typeof(LayoutElement), typeof(TextMeshProUGUI));
+            RectTransform labelRect = labelObject.GetComponent<RectTransform>();
+            labelRect.SetParent(row, false);
+            labelRect.SetSiblingIndex(0);
+            labelRect.sizeDelta = new Vector2(340f, 100f);
+
+            LayoutElement labelLayout = labelObject.GetComponent<LayoutElement>();
+            labelLayout.preferredWidth = 340f;
+            labelLayout.preferredHeight = 100f;
+            labelLayout.flexibleWidth = 0f;
+
+            TextMeshProUGUI labelText = labelObject.GetComponent<TextMeshProUGUI>();
+            TMP_FontAsset defaultFont = TMP_Settings.defaultFontAsset;
+            if (defaultFont != null)
+            {
+                labelText.font = defaultFont;
+            }
+
+            labelText.fontSize = 30f;
+            labelText.alignment = TextAlignmentOptions.MidlineLeft;
+            labelText.color = new Color(0.8f, 0.8f, 0.8f, 1f);
+            labelText.raycastTarget = false;
+
+            return labelText;
+        }
+
+        if (existingLabel != null)
+        {
+            return existingLabel;
+        }
+
+        return row.GetComponentInChildren<TMP_Text>(true);
+    }
+
+    private void BindSettingsButtons()
+    {
+        BindButtonAction(resolutionButton, ShowResolutionSelectionDialog);
+        BindButtonAction(languageButton, ShowLanguageSelectionDialog);
+        BindButtonAction(fullscreenButton, ShowDisplayModeSelectionDialog);
+    }
+
+    private static void BindButtonAction(Button button, UnityAction action)
+    {
+        if (button == null || action == null)
+        {
+            return;
+        }
+
+        button.onClick = new Button.ButtonClickedEvent();
+        button.onClick.AddListener(action);
+    }
+
+    private void InitializeSettingsState()
+    {
+        if (settingsInitialized)
+        {
+            return;
+        }
+
+        if (PlayerPrefs.HasKey(LanguagePrefKey))
+        {
+            int languageValue = Mathf.Clamp(PlayerPrefs.GetInt(LanguagePrefKey, 0), 0, 1);
+            currentLanguage = (AppLanguage)languageValue;
+        }
+
+        selectedResolutionIndex = Mathf.Clamp(
+            PlayerPrefs.GetInt(ResolutionPrefKey, FindNearestResolutionIndex(Screen.width, Screen.height)),
+            0,
+            ResolutionOptions.Length - 1);
+
+        isFullscreen = PlayerPrefs.GetInt(FullscreenPrefKey, Screen.fullScreen ? 1 : 0) == 1;
+
+        ApplyResolution(selectedResolutionIndex, isFullscreen, false);
+        settingsInitialized = true;
+    }
+
+    private static int FindNearestResolutionIndex(int width, int height)
+    {
+        int bestIndex = 0;
+        int bestDistance = int.MaxValue;
+
+        for (int i = 0; i < ResolutionOptions.Length; i++)
+        {
+            int distance = Mathf.Abs(ResolutionOptions[i].width - width) + Mathf.Abs(ResolutionOptions[i].height - height);
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+                bestIndex = i;
+            }
+        }
+
+        return bestIndex;
+    }
+
+    private void ApplyResolution(int index, bool fullscreen, bool persist)
+    {
+        selectedResolutionIndex = Mathf.Clamp(index, 0, ResolutionOptions.Length - 1);
+        isFullscreen = fullscreen;
+
+        ResolutionOption option = ResolutionOptions[selectedResolutionIndex];
+        Screen.SetResolution(option.width, option.height, isFullscreen);
+        ConfigureAllCanvasScalers();
+        ScheduleUiRefreshAfterResolutionChange();
+
+        if (persist)
+        {
+            PlayerPrefs.SetInt(ResolutionPrefKey, selectedResolutionIndex);
+            PlayerPrefs.SetInt(FullscreenPrefKey, isFullscreen ? 1 : 0);
+            PlayerPrefs.Save();
+        }
+
+        UpdateSettingsControlsText();
+    }
+
+    private void ConfigureAllCanvasScalers()
+    {
+        Canvas[] canvases = Resources.FindObjectsOfTypeAll<Canvas>();
+        for (int i = 0; i < canvases.Length; i++)
+        {
+            Canvas canvas = canvases[i];
+            if (canvas == null || !canvas.gameObject.scene.IsValid() || canvas.renderMode == RenderMode.WorldSpace)
+            {
+                continue;
+            }
+
+            CanvasScaler scaler = canvas.GetComponent<CanvasScaler>();
+            if (scaler == null)
+            {
+                scaler = canvas.gameObject.AddComponent<CanvasScaler>();
+            }
+
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(UiReferenceWidth, UiReferenceHeight);
+            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+            scaler.matchWidthOrHeight = UiMatchWidthHeight;
+        }
+    }
+
+    private void ScheduleUiRefreshAfterResolutionChange()
+    {
+        if (pendingResolutionRefreshCoroutine != null)
+        {
+            StopCoroutine(pendingResolutionRefreshCoroutine);
+        }
+
+        pendingResolutionRefreshCoroutine = StartCoroutine(RefreshUiAfterResolutionChange());
+    }
+
+    private IEnumerator RefreshUiAfterResolutionChange()
+    {
+        yield return null;
+        yield return new WaitForEndOfFrame();
+
+        ConfigureAllCanvasScalers();
+        Canvas.ForceUpdateCanvases();
+
+        if (currentMaze != null)
+        {
+            RebuildEditorGridVisuals();
+            RebuildRunnerGrids();
+        }
+
+        if (settingsPanel != null)
+        {
+            LayoutRebuilder.ForceRebuildLayoutImmediate(settingsPanel);
+        }
+
+        if (mapEditorPanel != null)
+        {
+            LayoutRebuilder.ForceRebuildLayoutImmediate(mapEditorPanel);
+        }
+
+        if (mazeRunnerPanel != null)
+        {
+            LayoutRebuilder.ForceRebuildLayoutImmediate(mazeRunnerPanel);
+        }
+
+        pendingResolutionRefreshCoroutine = null;
+    }
+
+    private void ToggleFullscreenMode()
+    {
+        ApplyResolution(selectedResolutionIndex, !isFullscreen, true);
+    }
+
+    private void ShowDisplayModeSelectionDialog()
+    {
+        string[] labels;
+        if (currentLanguage == AppLanguage.Polski)
+        {
+            labels = new[] { "Tryb okienkowy", "Pełny ekran" };
+        }
+        else
+        {
+            labels = new[] { "Windowed", "Fullscreen" };
+        }
+
+        ShowSettingsSelectionDialog(
+            currentLanguage == AppLanguage.Polski ? "Wybierz tryb wyświetlania" : "Choose display mode",
+            labels,
+            isFullscreen ? 1 : 0,
+            index => ApplyResolution(selectedResolutionIndex, index == 1, true));
+    }
+
+    private void ShowResolutionSelectionDialog()
+    {
+        string[] labels = new string[ResolutionOptions.Length];
+        for (int i = 0; i < ResolutionOptions.Length; i++)
+        {
+            labels[i] = ResolutionOptions[i].Label;
+        }
+
+        ShowSettingsSelectionDialog(
+            currentLanguage == AppLanguage.Polski ? "Wybierz rozdzielczość" : "Choose resolution",
+            labels,
+            selectedResolutionIndex,
+            index => ApplyResolution(index, isFullscreen, true));
+    }
+
+    private void ShowLanguageSelectionDialog()
+    {
+        string[] labels = { "Polski", "English" };
+
+        ShowSettingsSelectionDialog(
+            currentLanguage == AppLanguage.Polski ? "Wybierz język" : "Choose language",
+            labels,
+            (int)currentLanguage,
+            OnLanguageSelected);
+    }
+
+    private void OnLanguageSelected(int index)
+    {
+        currentLanguage = index == 0 ? AppLanguage.Polski : AppLanguage.English;
+        PlayerPrefs.SetInt(LanguagePrefKey, (int)currentLanguage);
+        PlayerPrefs.Save();
+
+        UpdateSettingsControlsText();
+        ApplyLanguageToAllTexts();
+    }
+
+    private void EnsureSettingsSelectionDialogBuilt()
+    {
+        if (settingsSelectionDialogOverlay != null || settingsPanel == null)
+        {
+            return;
+        }
+
+        TMP_FontAsset defaultFont = TMP_Settings.defaultFontAsset;
+        if (defaultFont == null)
+        {
+            return;
+        }
+
+        settingsSelectionDialogOverlay = new GameObject("SettingsSelectionDialog", typeof(RectTransform), typeof(Image));
+        RectTransform overlayRect = settingsSelectionDialogOverlay.GetComponent<RectTransform>();
+        overlayRect.SetParent(settingsPanel, false);
+        overlayRect.anchorMin = Vector2.zero;
+        overlayRect.anchorMax = Vector2.one;
+        overlayRect.offsetMin = Vector2.zero;
+        overlayRect.offsetMax = Vector2.zero;
+
+        Image overlayImage = settingsSelectionDialogOverlay.GetComponent<Image>();
+        overlayImage.color = new Color(0f, 0f, 0f, 0.6f);
+        overlayImage.raycastTarget = true;
+
+        GameObject panel = new GameObject("Panel", typeof(RectTransform), typeof(Image));
+        RectTransform panelRect = panel.GetComponent<RectTransform>();
+        panelRect.SetParent(overlayRect, false);
+        panelRect.anchorMin = new Vector2(0.5f, 0.5f);
+        panelRect.anchorMax = new Vector2(0.5f, 0.5f);
+        panelRect.pivot = new Vector2(0.5f, 0.5f);
+        panelRect.sizeDelta = new Vector2(700f, 560f);
+        panelRect.anchoredPosition = Vector2.zero;
+        panel.GetComponent<Image>().color = saveDialogPanelColor;
+
+        settingsSelectionTitleText = CreateDialogLabel(
+            panelRect,
+            string.Empty,
+            new Vector2(0.5f, 1f),
+            new Vector2(0.5f, 1f),
+            new Vector2(0.5f, 1f),
+            new Vector2(0f, -26f),
+            new Vector2(640f, 46f),
+            defaultFont,
+            30f,
+            TextAlignmentOptions.Center,
+            Color.white);
+
+        GameObject listRoot = new GameObject("ListRoot", typeof(RectTransform), typeof(Image), typeof(ScrollRect));
+        RectTransform listRect = listRoot.GetComponent<RectTransform>();
+        listRect.SetParent(panelRect, false);
+        listRect.anchorMin = new Vector2(0.5f, 0.5f);
+        listRect.anchorMax = new Vector2(0.5f, 0.5f);
+        listRect.pivot = new Vector2(0.5f, 0.5f);
+        listRect.sizeDelta = new Vector2(620f, 380f);
+        listRect.anchoredPosition = new Vector2(0f, -16f);
+        listRoot.GetComponent<Image>().color = new Color(0.12f, 0.12f, 0.12f, 1f);
+
+        GameObject viewportObject = new GameObject("Viewport", typeof(RectTransform), typeof(Image), typeof(Mask));
+        RectTransform viewportRect = viewportObject.GetComponent<RectTransform>();
+        viewportRect.SetParent(listRect, false);
+        viewportRect.anchorMin = Vector2.zero;
+        viewportRect.anchorMax = Vector2.one;
+        viewportRect.offsetMin = new Vector2(8f, 8f);
+        viewportRect.offsetMax = new Vector2(-8f, -8f);
+        viewportObject.GetComponent<Mask>().showMaskGraphic = false;
+        viewportObject.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.04f);
+
+        GameObject contentObject = new GameObject(
+            "Content",
+            typeof(RectTransform),
+            typeof(VerticalLayoutGroup),
+            typeof(ContentSizeFitter));
+        RectTransform contentRect = contentObject.GetComponent<RectTransform>();
+        contentRect.SetParent(viewportRect, false);
+        contentRect.anchorMin = new Vector2(0f, 1f);
+        contentRect.anchorMax = new Vector2(1f, 1f);
+        contentRect.pivot = new Vector2(0.5f, 1f);
+        contentRect.anchoredPosition = Vector2.zero;
+        contentRect.sizeDelta = Vector2.zero;
+
+        VerticalLayoutGroup layout = contentObject.GetComponent<VerticalLayoutGroup>();
+        layout.padding = new RectOffset(0, 0, 0, 0);
+        layout.spacing = 8f;
+        layout.childAlignment = TextAnchor.UpperCenter;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = true;
+        layout.childForceExpandHeight = false;
+
+        ContentSizeFitter fitter = contentObject.GetComponent<ContentSizeFitter>();
+        fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+        ScrollRect scroll = listRoot.GetComponent<ScrollRect>();
+        scroll.viewport = viewportRect;
+        scroll.content = contentRect;
+        scroll.horizontal = false;
+        scroll.vertical = true;
+        scroll.movementType = ScrollRect.MovementType.Clamped;
+        scroll.scrollSensitivity = 24f;
+
+        CreateDialogButton(
+            panelRect,
+            currentLanguage == AppLanguage.Polski ? "Zamknij" : "Close",
+            new Vector2(0f, -238f),
+            HideSettingsSelectionDialog,
+            defaultFont);
+
+        settingsSelectionListContent = contentRect;
+        settingsSelectionDialogOverlay.SetActive(false);
+    }
+
+    private void ShowSettingsSelectionDialog(string title, string[] options, int selectedIndex, Action<int> onSelected)
+    {
+        EnsureSettingsSelectionDialogBuilt();
+        if (settingsSelectionDialogOverlay == null || settingsSelectionListContent == null)
+        {
+            return;
+        }
+
+        onSettingsOptionSelected = onSelected;
+        settingsSelectionTitleText.text = title;
+
+        ClearGridVisuals(settingsSelectionListContent);
+
+        TMP_FontAsset defaultFont = TMP_Settings.defaultFontAsset;
+        if (defaultFont == null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < options.Length; i++)
+        {
+            int optionIndex = i;
+            string optionLabel = options[i];
+            bool isSelected = optionIndex == selectedIndex;
+
+            GameObject buttonObject = new GameObject(
+                "Option_" + optionLabel,
+                typeof(RectTransform),
+                typeof(Image),
+                typeof(Button),
+                typeof(LayoutElement));
+            RectTransform buttonRect = buttonObject.GetComponent<RectTransform>();
+            buttonRect.SetParent(settingsSelectionListContent, false);
+            buttonRect.anchorMin = new Vector2(0f, 1f);
+            buttonRect.anchorMax = new Vector2(1f, 1f);
+            buttonRect.pivot = new Vector2(0.5f, 1f);
+            buttonRect.sizeDelta = new Vector2(0f, 54f);
+
+            LayoutElement layoutElement = buttonObject.GetComponent<LayoutElement>();
+            layoutElement.preferredHeight = 54f;
+            layoutElement.flexibleWidth = 1f;
+
+            Image image = buttonObject.GetComponent<Image>();
+            image.color = isSelected
+                ? new Color(0.28f, 0.36f, 0.28f, 1f)
+                : new Color(0.22f, 0.22f, 0.22f, 1f);
+
+            Button button = buttonObject.GetComponent<Button>();
+            button.onClick.AddListener(() =>
+            {
+                HideSettingsSelectionDialog();
+                onSettingsOptionSelected?.Invoke(optionIndex);
+            });
+
+            TextMeshProUGUI text = new GameObject("Text", typeof(RectTransform), typeof(TextMeshProUGUI))
+                .GetComponent<TextMeshProUGUI>();
+            RectTransform textRect = text.GetComponent<RectTransform>();
+            textRect.SetParent(buttonRect, false);
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.offsetMin = new Vector2(14f, 0f);
+            textRect.offsetMax = new Vector2(-14f, 0f);
+            text.font = defaultFont;
+            text.fontSize = 24f;
+            text.alignment = TextAlignmentOptions.Left;
+            text.color = Color.white;
+            text.text = optionLabel;
+            text.raycastTarget = false;
+        }
+
+        settingsSelectionDialogOverlay.SetActive(true);
+        settingsSelectionDialogOverlay.transform.SetAsLastSibling();
+    }
+
+    private void HideSettingsSelectionDialog()
+    {
+        if (settingsSelectionDialogOverlay != null)
+        {
+            settingsSelectionDialogOverlay.SetActive(false);
+        }
+    }
+
+    private void UpdateSettingsControlsText()
+    {
+        if (resolutionButtonText != null)
+        {
+            resolutionButtonText.text = ResolutionOptions[selectedResolutionIndex].Label;
+        }
+
+        if (languageButtonText != null)
+        {
+            languageButtonText.text = currentLanguage == AppLanguage.Polski ? "Polski" : "English";
+        }
+
+        if (fullscreenButtonText != null)
+        {
+            fullscreenButtonText.text = currentLanguage == AppLanguage.Polski
+                ? (isFullscreen ? "Pełny ekran" : "Tryb okienkowy")
+                : (isFullscreen ? "Fullscreen" : "Windowed");
+        }
+
+        if (resolutionLabelText != null)
+        {
+            resolutionLabelText.text = currentLanguage == AppLanguage.Polski ? "Rozdzielczość" : "Resolution";
+        }
+
+        if (fullscreenLabelText != null)
+        {
+            fullscreenLabelText.text = currentLanguage == AppLanguage.Polski ? "Tryb Wyświetlania" : "Display Mode";
+        }
+
+        if (languageLabelText != null)
+        {
+            languageLabelText.text = currentLanguage == AppLanguage.Polski ? "Język" : "Language";
+        }
+    }
+
+    private void ApplyLanguageToAllTexts()
+    {
+        TMP_Text[] texts = Resources.FindObjectsOfTypeAll<TMP_Text>();
+        for (int i = 0; i < texts.Length; i++)
+        {
+            TMP_Text text = texts[i];
+            if (text == null || !text.gameObject.scene.IsValid())
+            {
+                continue;
+            }
+
+            if (text == resolutionButtonText || text == languageButtonText || text == fullscreenButtonText ||
+                text == resolutionLabelText || text == fullscreenLabelText || text == languageLabelText ||
+                text == measurementHeaderText)
+            {
+                continue;
+            }
+
+            text.text = TranslateStaticText(text.text);
+        }
+
+        ResetResultsText();
+        UpdateSettingsControlsText();
+        UpdateMeasurementsHeaderText();
+    }
+
+    private string TranslateStaticText(string input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            return input;
+        }
+
+        bool toEnglish = currentLanguage == AppLanguage.English;
+
+        if (toEnglish)
+        {
+            switch (input)
+            {
+                case "Wyniki Pomiarów": return "Measurement Results";
+                case "Edytor Labiryntów": return "Maze Editor";
+                case "Ustawienia": return "Settings";
+                case "Informacje Pomiaru": return "Measurement Info";
+                case "Rozpocznij Pomiar": return "Start Measurement";
+                case "Dodaj Labirynt": return "Add Maze";
+                case "Rysowanie": return "Draw";
+                case "Usuwanie": return "Erase";
+                case "Dodaj Start/Mete": return "Set Start/Finish";
+                case "Generuj Losowo": return "Random Maze";
+                case "Zapisz Labirynt": return "Save Maze";
+                case "Usuń Labirynt": return "Delete Maze";
+                case "Wróć": return "Back";
+                case "Algorytm A": return "Algorithm A";
+                case "Algorytm B": return "Algorithm B";
+                case "Pomiary dla Labiryntu - Nazwa Labiryntu": return "Measurements for Maze - Maze Name";
+                case "Identyfikator | Nazwa Algorytmu | Nazwa Labiryntu | Czas Pomiaru": return "ID | Algorithm Name | Maze Name | Measurement Time";
+                case "Wybierz rozmiar": return "Choose size";
+            }
+
+            return input
+                .Replace("Nazwa Algorytmu", "Algorithm Name")
+                .Replace("Nazwa Labiryntu", "Maze Name")
+                .Replace("Czas Pomiaru", "Measurement Time")
+                .Replace("Algorytm", "Algorithm")
+                .Replace("Labirynt", "Maze");
+        }
+
+        switch (input)
+        {
+            case "Measurement Results": return "Wyniki Pomiarów";
+            case "Maze Editor": return "Edytor Labiryntów";
+            case "Settings": return "Ustawienia";
+            case "Measurement Info": return "Informacje Pomiaru";
+            case "Start Measurement": return "Rozpocznij Pomiar";
+            case "Add Maze": return "Dodaj Labirynt";
+            case "Draw": return "Rysowanie";
+            case "Erase": return "Usuwanie";
+            case "Set Start/Finish": return "Dodaj Start/Mete";
+            case "Random Maze": return "Generuj Losowo";
+            case "Save Maze": return "Zapisz Labirynt";
+            case "Delete Maze": return "Usuń Labirynt";
+            case "Back": return "Wróć";
+            case "Algorithm A": return "Algorytm A";
+            case "Algorithm B": return "Algorytm B";
+            case "Measurements for Maze - Maze Name": return "Pomiary dla Labiryntu - Nazwa Labiryntu";
+            case "ID | Algorithm Name | Maze Name | Measurement Time": return "Identyfikator | Nazwa Algorytmu | Nazwa Labiryntu | Czas Pomiaru";
+            case "Choose size": return "Wybierz rozmiar";
+        }
+
+        return input
+            .Replace("Algorithm Name", "Nazwa Algorytmu")
+            .Replace("Maze Name", "Nazwa Labiryntu")
+            .Replace("Measurement Time", "Czas Pomiaru")
+            .Replace("Algorithm", "Algorytm")
+            .Replace("Maze", "Labirynt");
+    }
+
     private void TrySetupRunnerUI()
     {
         ResolveRunnerReferences();
         ApplyRunnerGridBackgrounds();
+        EnsureComparisonAreaLayout();
         BindRunnerButtons();
     }
 
@@ -736,12 +2043,14 @@ public class MazeAppController : MonoBehaviour
 
         TrySetupRunnerUI();
 
-        BuildRunnerGrid(algorithmAGrid);
-        BuildRunnerGrid(algorithmBGrid);
+        BuildRunnerGrid(algorithmAGrid, out algorithmATileImages);
+        BuildRunnerGrid(algorithmBGrid, out algorithmBTileImages);
     }
 
-    private void BuildRunnerGrid(RectTransform targetGrid)
+    private void BuildRunnerGrid(RectTransform targetGrid, out Image[,] targetTileImages)
     {
+        targetTileImages = null;
+
         if (targetGrid == null || currentMaze == null)
         {
             return;
@@ -765,6 +2074,7 @@ public class MazeAppController : MonoBehaviour
         layout.startAxis = GridLayoutGroup.Axis.Horizontal;
         layout.startCorner = GridLayoutGroup.Corner.UpperLeft;
         layout.childAlignment = TextAnchor.UpperLeft;
+        targetTileImages = new Image[currentMaze.Width, currentMaze.Height];
 
         for (int y = currentMaze.Height - 1; y >= 0; y--)
         {
@@ -773,6 +2083,7 @@ public class MazeAppController : MonoBehaviour
                 Vector2Int position = new Vector2Int(x, y);
                 Image tileImage = CreateRunnerTile(targetGrid, position);
                 tileImage.color = GetTileColor(position);
+                targetTileImages[position.x, position.y] = tileImage;
             }
         }
     }
@@ -1117,9 +2428,11 @@ public class MazeAppController : MonoBehaviour
 
             RebuildEditorGridVisuals();
             RebuildRunnerGrids();
+            SyncMazeSizeDropdownSelection();
+            SetCurrentMazeName(Path.GetFileNameWithoutExtension(filePath));
 
             HideLoadMazeDialog();
-            UpdateInfo($"Loaded maze: {Path.GetFileNameWithoutExtension(filePath)}");
+            UpdateInfo($"Loaded maze: {GetActiveMazeDisplayName()}");
         }
         catch (Exception ex)
         {
@@ -1272,7 +2585,7 @@ public class MazeAppController : MonoBehaviour
             return FallbackTileSize;
         }
 
-        return Mathf.Max(MinTileSize, Mathf.Floor(size));
+        return Mathf.Max(MinTileSize, size);
     }
 
     private void ClearEditorGridVisuals()
@@ -1535,6 +2848,7 @@ public class MazeAppController : MonoBehaviour
             MazeSaveData data = BuildSaveData(mazeName);
             string json = JsonUtility.ToJson(data, true);
             File.WriteAllText(fullPath, json);
+            SetCurrentMazeName(mazeName);
 
             HideSaveDialog();
             UpdateInfo($"Maze '{mazeName}' saved.");
@@ -1612,13 +2926,89 @@ public class MazeAppController : MonoBehaviour
     {
         if (wynikAText != null)
         {
-            wynikAText.text = "Algorytm A: brak wyniku";
+            wynikAText.text = currentLanguage == AppLanguage.Polski
+                ? "Algorytm A: brak wyniku"
+                : "Algorithm A: no result";
         }
 
         if (wynikBText != null)
         {
-            wynikBText.text = "Algorytm B: brak wyniku";
+            wynikBText.text = currentLanguage == AppLanguage.Polski
+                ? "Algorytm B: brak wyniku"
+                : "Algorithm B: no result";
         }
+
+        UpdateMeasurementsHeaderText();
+    }
+
+    private void SetCurrentMazeName(string mazeName)
+    {
+        currentMazeName = mazeName == null ? string.Empty : mazeName.Trim();
+        UpdateMeasurementsHeaderText();
+    }
+
+    private string GetActiveMazeDisplayName()
+    {
+        if (!string.IsNullOrWhiteSpace(currentMazeName))
+        {
+            return currentMazeName;
+        }
+
+        return currentLanguage == AppLanguage.Polski ? "Edytowany Labirynt" : "Edited Maze";
+    }
+
+    private void ResolveMeasurementsHeaderText()
+    {
+        if (measurementHeaderText != null && measurementHeaderText.gameObject.scene.IsValid())
+        {
+            return;
+        }
+
+        if (mazeRunnerPanel == null)
+        {
+            return;
+        }
+
+        TMP_Text fallbackByName = null;
+        TMP_Text[] texts = mazeRunnerPanel.GetComponentsInChildren<TMP_Text>(true);
+        for (int i = 0; i < texts.Length; i++)
+        {
+            TMP_Text text = texts[i];
+            if (text == null || !text.gameObject.scene.IsValid())
+            {
+                continue;
+            }
+
+            if (text.name.Equals("TitleText", StringComparison.OrdinalIgnoreCase) && fallbackByName == null)
+            {
+                fallbackByName = text;
+            }
+
+            string value = text.text ?? string.Empty;
+            if (value.IndexOf("Pomiary dla Labiryntu", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                value.IndexOf("Measurements for Maze", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                measurementHeaderText = text;
+                return;
+            }
+        }
+
+        measurementHeaderText = fallbackByName;
+    }
+
+    private void UpdateMeasurementsHeaderText()
+    {
+        ResolveMeasurementsHeaderText();
+
+        if (measurementHeaderText == null)
+        {
+            return;
+        }
+
+        string prefix = currentLanguage == AppLanguage.Polski
+            ? "Pomiary dla Labiryntu - "
+            : "Measurements for Maze - ";
+        measurementHeaderText.text = prefix + GetActiveMazeDisplayName();
     }
 
     private IEnumerator RunComparisonCoroutine(
@@ -1636,6 +3026,8 @@ public class MazeAppController : MonoBehaviour
 
     private void OnComparisonCompleted(AlgorithmComparisonResult result)
     {
+        activeVisualizationTarget = VisualizationTarget.None;
+
         if (result == null)
         {
             UpdateInfo("Benchmark finished without result.");
@@ -1646,26 +3038,36 @@ public class MazeAppController : MonoBehaviour
         {
             wynikAText.text =
                 $"{result.firstAlgorithmSummary.algorithmName}\n" +
-                $"Success rate: {result.firstAlgorithmSummary.successRate:P0}\n" +
-                $"Avg time: {result.firstAlgorithmSummary.averageTotalRuntimeMs:F2} ms\n" +
-                $"Avg path: {result.firstAlgorithmSummary.averagePathLength:F2}\n" +
-                $"Avg steps: {result.firstAlgorithmSummary.averageStepsTaken:F2}";
+                $"{(currentLanguage == AppLanguage.Polski ? "Skuteczność" : "Success rate")}: {result.firstAlgorithmSummary.successRate:P0}\n" +
+                $"{(currentLanguage == AppLanguage.Polski ? "Śr. czas" : "Avg time")}: {result.firstAlgorithmSummary.averageTotalRuntimeMs:F2} ms\n" +
+                $"{(currentLanguage == AppLanguage.Polski ? "Śr. długość ścieżki" : "Avg path")}: {result.firstAlgorithmSummary.averagePathLength:F2}\n" +
+                $"{(currentLanguage == AppLanguage.Polski ? "Śr. kroki" : "Avg steps")}: {result.firstAlgorithmSummary.averageStepsTaken:F2}";
         }
 
         if (wynikBText != null)
         {
             wynikBText.text =
                 $"{result.secondAlgorithmSummary.algorithmName}\n" +
-                $"Success rate: {result.secondAlgorithmSummary.successRate:P0}\n" +
-                $"Avg time: {result.secondAlgorithmSummary.averageTotalRuntimeMs:F2} ms\n" +
-                $"Avg path: {result.secondAlgorithmSummary.averagePathLength:F2}\n" +
-                $"Avg steps: {result.secondAlgorithmSummary.averageStepsTaken:F2}";
+                $"{(currentLanguage == AppLanguage.Polski ? "Skuteczność" : "Success rate")}: {result.secondAlgorithmSummary.successRate:P0}\n" +
+                $"{(currentLanguage == AppLanguage.Polski ? "Śr. czas" : "Avg time")}: {result.secondAlgorithmSummary.averageTotalRuntimeMs:F2} ms\n" +
+                $"{(currentLanguage == AppLanguage.Polski ? "Śr. długość ścieżki" : "Avg path")}: {result.secondAlgorithmSummary.averagePathLength:F2}\n" +
+                $"{(currentLanguage == AppLanguage.Polski ? "Śr. kroki" : "Avg steps")}: {result.secondAlgorithmSummary.averageStepsTaken:F2}";
         }
 
-        UpdateInfo(
-            $"Done. Faster: {result.fasterAlgorithmName} | " +
-            $"More reliable: {result.moreReliableAlgorithmName} | " +
-            $"Better path: {result.betterPathAlgorithmName}");
+        if (currentLanguage == AppLanguage.Polski)
+        {
+            UpdateInfo(
+                $"Gotowe. Szybszy: {result.fasterAlgorithmName} | " +
+                $"Bardziej niezawodny: {result.moreReliableAlgorithmName} | " +
+                $"Lepsza ścieżka: {result.betterPathAlgorithmName}");
+        }
+        else
+        {
+            UpdateInfo(
+                $"Done. Faster: {result.fasterAlgorithmName} | " +
+                $"More reliable: {result.moreReliableAlgorithmName} | " +
+                $"Better path: {result.betterPathAlgorithmName}");
+        }
     }
 
     private void UpdateInfo(string message)
@@ -1677,4 +3079,212 @@ public class MazeAppController : MonoBehaviour
 
         Debug.Log(message);
     }
+
+    private void EnsureComparisonAreaLayout()
+    {
+        RectTransform infoPanel = null;
+
+        if (wynikAText != null)
+        {
+            infoPanel = wynikAText.rectTransform.parent as RectTransform;
+        }
+
+        if (infoPanel == null && wynikBText != null)
+        {
+            infoPanel = wynikBText.rectTransform.parent as RectTransform;
+        }
+
+        if (infoPanel == null && mazeRunnerPanel != null)
+        {
+            infoPanel = FindRectTransformByName(mazeRunnerPanel, "InfoPanel");
+        }
+
+        if (infoPanel == null)
+        {
+            return;
+        }
+
+        VerticalLayoutGroup layout = infoPanel.GetComponent<VerticalLayoutGroup>();
+        if (layout == null)
+        {
+            layout = infoPanel.gameObject.AddComponent<VerticalLayoutGroup>();
+        }
+
+        layout.padding = new RectOffset(20, 20, 20, 20);
+        layout.spacing = 14f;
+        layout.childAlignment = TextAnchor.UpperLeft;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = true;
+        layout.childForceExpandHeight = false;
+
+        ConfigureComparisonText(infoText, 120f, 22f);
+        ConfigureComparisonText(wynikAText, 210f, 20f);
+        ConfigureComparisonText(wynikBText, 210f, 20f);
+
+        LayoutRebuilder.ForceRebuildLayoutImmediate(infoPanel);
+    }
+
+    private static void ConfigureComparisonText(TMP_Text text, float preferredHeight, float fontSize)
+    {
+        if (text == null)
+        {
+            return;
+        }
+
+        RectTransform rect = text.rectTransform;
+        rect.anchorMin = new Vector2(0f, 1f);
+        rect.anchorMax = new Vector2(1f, 1f);
+        rect.pivot = new Vector2(0.5f, 1f);
+        rect.offsetMin = Vector2.zero;
+        rect.offsetMax = Vector2.zero;
+
+        LayoutElement layoutElement = text.GetComponent<LayoutElement>();
+        if (layoutElement == null)
+        {
+            layoutElement = text.gameObject.AddComponent<LayoutElement>();
+        }
+
+        layoutElement.minHeight = preferredHeight;
+        layoutElement.preferredHeight = preferredHeight;
+        layoutElement.flexibleHeight = 0f;
+        layoutElement.flexibleWidth = 1f;
+
+        text.enableWordWrapping = true;
+        text.overflowMode = TextOverflowModes.Truncate;
+        text.alignment = TextAlignmentOptions.TopLeft;
+        text.fontSize = fontSize;
+        text.raycastTarget = false;
+    }
+
+    private void OnAlgorithmRunStarted(string algorithmName, int runIndex)
+    {
+        activeVisualizationTarget = ResolveVisualizationTarget(algorithmName);
+        ResetTraversalForTarget(activeVisualizationTarget);
+    }
+
+    private void OnAlgorithmRunCompleted(string algorithmName, int runIndex)
+    {
+        activeVisualizationTarget = VisualizationTarget.None;
+    }
+
+    private VisualizationTarget ResolveVisualizationTarget(string algorithmName)
+    {
+        if (!string.IsNullOrWhiteSpace(algorithmName) &&
+            algorithmName.IndexOf("genetic", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            return VisualizationTarget.AlgorithmA;
+        }
+
+        if (!string.IsNullOrWhiteSpace(algorithmName) &&
+            algorithmName.IndexOf("ant", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            return VisualizationTarget.AlgorithmB;
+        }
+
+        return VisualizationTarget.None;
+    }
+
+    private void OnAlgorithmVisualizationStep(Vector2Int position)
+    {
+        if (activeVisualizationTarget == VisualizationTarget.None || currentMaze == null)
+        {
+            return;
+        }
+
+        if (!currentMaze.IsInside(position))
+        {
+            return;
+        }
+
+        if (position == startPosition || position == finishPosition)
+        {
+            return;
+        }
+
+        if (!currentMaze.IsWalkable(position))
+        {
+            return;
+        }
+
+        Image[,] targetTiles;
+        HashSet<Vector2Int> visitedSet;
+
+        if (activeVisualizationTarget == VisualizationTarget.AlgorithmA)
+        {
+            targetTiles = algorithmATileImages;
+            visitedSet = algorithmAVisitedTiles;
+        }
+        else
+        {
+            targetTiles = algorithmBTileImages;
+            visitedSet = algorithmBVisitedTiles;
+        }
+
+        if (targetTiles == null || !visitedSet.Add(position))
+        {
+            return;
+        }
+
+        if (position.x < 0 || position.x >= targetTiles.GetLength(0) ||
+            position.y < 0 || position.y >= targetTiles.GetLength(1))
+        {
+            return;
+        }
+
+        Image tile = targetTiles[position.x, position.y];
+        if (tile != null)
+        {
+            tile.color = traversalColor;
+        }
+    }
+
+    private void ResetRunnerTraversalVisualization()
+    {
+        ResetTraversalForTarget(VisualizationTarget.AlgorithmA);
+        ResetTraversalForTarget(VisualizationTarget.AlgorithmB);
+    }
+
+    private void ResetTraversalForTarget(VisualizationTarget target)
+    {
+        Image[,] targetTiles;
+        HashSet<Vector2Int> visitedSet;
+
+        if (target == VisualizationTarget.AlgorithmA)
+        {
+            targetTiles = algorithmATileImages;
+            visitedSet = algorithmAVisitedTiles;
+        }
+        else if (target == VisualizationTarget.AlgorithmB)
+        {
+            targetTiles = algorithmBTileImages;
+            visitedSet = algorithmBVisitedTiles;
+        }
+        else
+        {
+            return;
+        }
+
+        visitedSet.Clear();
+
+        if (targetTiles == null || currentMaze == null)
+        {
+            return;
+        }
+
+        for (int x = 0; x < currentMaze.Width; x++)
+        {
+            for (int y = 0; y < currentMaze.Height; y++)
+            {
+                Image tile = targetTiles[x, y];
+                if (tile == null)
+                {
+                    continue;
+                }
+
+                tile.color = GetTileColor(new Vector2Int(x, y));
+            }
+        }
+    }
 }
+

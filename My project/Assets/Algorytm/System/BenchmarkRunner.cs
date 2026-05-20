@@ -183,6 +183,8 @@ namespace Algorytm.System
             ApplyContextToMetrics(context, metrics);
             PrepareFpsTracking(context);
 
+            context.onAlgorithmRunStarted?.Invoke(algorithm.AlgorithmName, runIndex);
+
             profiler.Begin();
             yield return algorithm.Run(context, metrics, profiler);
             profiler.End();
@@ -199,6 +201,8 @@ namespace Algorytm.System
 
             targetList.Add(metrics);
             _allMetrics.Add(metrics);
+
+            context.onAlgorithmRunCompleted?.Invoke(algorithm.AlgorithmName, runIndex);
 
             Debug.Log(MetricsFormatter.ToReadableText(metrics));
         }
@@ -282,7 +286,10 @@ namespace Algorytm.System
                 stepDelaySeconds = sourceContext.stepDelaySeconds,
                 mazeData = sourceContext.mazeData,
                 coroutineHost = sourceContext.coroutineHost,
-                fpsTracker = sourceContext.fpsTracker
+                fpsTracker = sourceContext.fpsTracker,
+                onAlgorithmRunStarted = sourceContext.onAlgorithmRunStarted,
+                onAlgorithmRunCompleted = sourceContext.onAlgorithmRunCompleted,
+                onVisualizationStep = sourceContext.onVisualizationStep
             };
         }
 

@@ -122,7 +122,8 @@ namespace Algorytm.Mrówkowy
                         ref wallHits,
                         ref deadEnds,
                         ref validMoves,
-                        ref invalidMoves);
+                        ref invalidMoves,
+                        context.enableVisualization ? context.onVisualizationStep : null);
 
                     ants.Add(ant);
                 }
@@ -336,7 +337,8 @@ namespace Algorytm.Mrówkowy
             ref int wallHits,
             ref int deadEnds,
             ref int validMoves,
-            ref int invalidMoves)
+            ref int invalidMoves,
+            Action<Vector2Int> onVisualizationStep)
         {
             var ant = new AntRunData();
             var localVisited = new HashSet<Vector2Int>();
@@ -345,6 +347,7 @@ namespace Algorytm.Mrówkowy
             ant.Path.Add(current);
             localVisited.Add(current);
             globallyVisited.Add(current);
+            onVisualizationStep?.Invoke(current);
 
             int initialDistance = maze.GetManhattanDistance(start, finish);
             int bestDistance = initialDistance;
@@ -380,6 +383,7 @@ namespace Algorytm.Mrówkowy
 
                 current = next;
                 ant.Path.Add(current);
+                onVisualizationStep?.Invoke(current);
 
                 int currentDistance = maze.GetManhattanDistance(current, finish);
                 if (currentDistance < bestDistance)

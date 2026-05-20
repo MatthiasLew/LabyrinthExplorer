@@ -12,6 +12,7 @@ public class AppUIManager : MonoBehaviour
     }
 
     public static PanelType panelToOpen = PanelType.MazeRunner;
+    public static bool openAppSceneFromMainMenu;
 
     [Header("Panels")]
     [SerializeField] private GameObject mazeRunnerPanel;
@@ -21,6 +22,13 @@ public class AppUIManager : MonoBehaviour
 
     private void Start()
     {
+        if (!openAppSceneFromMainMenu)
+        {
+            SceneManager.LoadSceneAsync("MainMenuScene");
+            return;
+        }
+
+        openAppSceneFromMainMenu = false;
         OpenPanel(panelToOpen);
     }
 
@@ -31,6 +39,7 @@ public class AppUIManager : MonoBehaviour
 
     public void GoToAppScene()
     {
+        openAppSceneFromMainMenu = true;
         SceneManager.LoadSceneAsync("AppScene");
     }
 

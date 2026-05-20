@@ -85,6 +85,7 @@ namespace Algorytm.Genetyczny
             Random.InitState(context.randomSeed);
 
             var globallyVisited = new HashSet<Vector2Int>();
+            var visualizedCells = context.enableVisualization ? new HashSet<Vector2Int>() : null;
             int revisitedCells = 0;
             int wallHits = 0;
             int deadEnds = 0;
@@ -121,6 +122,12 @@ namespace Algorytm.Genetyczny
                 Chromosome bestOfGeneration = population[0];
                 float averageFitness = population.Average(chromosome => chromosome.Fitness);
 
+                if (context.enableVisualization && context.onVisualizationStep != null)
+                {
+                    EmitNewVisitedCells(globallyVisited, visualizedCells, context.onVisualizationStep);
+                    EmitPath(context.onVisualizationStep, bestOfGeneration.Path);
+                }
+
                 result.generations = generation + 1;
                 result.iterations = generation + 1;
                 result.bestFitness = bestOfGeneration.Fitness;
@@ -141,6 +148,11 @@ namespace Algorytm.Genetyczny
 
                 if (bestOfGeneration.ReachedGoal)
                 {
+                    if (context.enableVisualization && context.onVisualizationStep != null)
+                    {
+                        EmitPath(context.onVisualizationStep, bestOfGeneration.Path);
+                    }
+
                     FillResultFromChromosome(result, bestOfGeneration, maze, context);
                     FillSharedResultStats(
                         result,
@@ -217,6 +229,38 @@ namespace Algorytm.Genetyczny
                 "MaxGenerationsReached");
 
             result.ApplyTo(metrics);
+        }
+
+        private static void EmitNewVisitedCells(
+            HashSet<Vector2Int> globallyVisited,
+            HashSet<Vector2Int> visualizedCells,
+            Action<Vector2Int> onStep)
+        {
+            if (globallyVisited == null || visualizedCells == null || onStep == null)
+            {
+                return;
+            }
+
+            foreach (Vector2Int position in globallyVisited)
+            {
+                if (visualizedCells.Add(position))
+                {
+                    onStep(position);
+                }
+            }
+        }
+
+        private static void EmitPath(Action<Vector2Int> onStep, List<Vector2Int> path)
+        {
+            if (onStep == null || path == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < path.Count; i++)
+            {
+                onStep(path[i]);
+            }
         }
 
         /// <summary>
