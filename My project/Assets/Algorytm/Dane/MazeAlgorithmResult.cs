@@ -125,6 +125,16 @@ namespace Algorytm.Dane
         /// </exception>
         
         /// <summary>
+        /// Pola odkryte podczas wyszukiwania, zapisane w kolejności pierwszego odwiedzenia.
+        /// </summary>
+        public List<Vector2Int> explorationTrace = new();
+
+        /// <summary>
+        /// Czytelne segmenty animacji: najlepsze potomstwa albo reprezentatywne mrówki.
+        /// </summary>
+        public List<AlgorithmReplaySegment> replaySegments = new();
+
+        /// <summary>
         /// Końcowa ścieżka znaleziona przez algorytm.
         /// </summary>
         public List<Vector2Int> finalPath = new();
@@ -161,6 +171,22 @@ namespace Algorytm.Dane
             metrics.bestFitness = bestFitness;
             metrics.averageFitness = averageFitness;
             metrics.additionalInfo = additionalInfo;
+
+            metrics.explorationTrace = explorationTrace != null
+                ? new List<Vector2Int>(explorationTrace)
+                : new List<Vector2Int>();
+
+            metrics.replaySegments = new List<AlgorithmReplaySegment>();
+            if (replaySegments != null)
+            {
+                for (int i = 0; i < replaySegments.Count; i++)
+                {
+                    if (replaySegments[i] != null)
+                    {
+                        metrics.replaySegments.Add(replaySegments[i].Clone());
+                    }
+                }
+            }
             
             metrics.finalPath = finalPath != null
                 ? new List<Vector2Int>(finalPath)

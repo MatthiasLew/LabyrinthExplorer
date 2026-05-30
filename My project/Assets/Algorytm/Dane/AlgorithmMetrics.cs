@@ -5,6 +5,33 @@ using System.Collections.Generic;
 namespace Algorytm.Dane
 {
     /// <summary>
+    /// Pojedynczy czytelny fragment animacji przebiegu algorytmu.
+    /// Dla genetycznego jest to nowe najlepsze potomstwo, a dla mrówkowego
+    /// reprezentatywna najlepsza mrówka danej iteracji lub mrówka zwycięska.
+    /// </summary>
+    [Serializable]
+    public class AlgorithmReplaySegment
+    {
+        public int iteration;
+        public int agentIndex;
+        public bool reachedGoal;
+        public List<Vector2Int> path = new();
+
+        public AlgorithmReplaySegment Clone()
+        {
+            var clone = new AlgorithmReplaySegment
+            {
+                iteration = iteration,
+                agentIndex = agentIndex,
+                reachedGoal = reachedGoal
+            };
+
+            clone.path.AddRange(path);
+            return clone;
+        }
+    }
+
+    /// <summary>
     /// Przechowuje komplet metryk opisujących pojedyncze uruchomienie algorytmu
     /// wyszukiwania ścieżki w labiryncie.
     /// </summary>
@@ -321,8 +348,20 @@ namespace Algorytm.Dane
         }
         
         /// <summary>
+        /// Pola odkryte przez algorytm w kolejności pierwszego odwiedzenia.
+        /// Lista służy do uczciwego odtworzenia eksploracji po zakończeniu pomiaru czasu.
+        /// </summary>
+        public List<Vector2Int> explorationTrace = new();
+
+        /// <summary>
+        /// Segmenty przeznaczone wyłącznie do czytelnego odtworzenia działania algorytmu.
+        /// Nie wpływają na czas pomiaru ani na obliczone metryki.
+        /// </summary>
+        public List<AlgorithmReplaySegment> replaySegments = new();
+
+        /// <summary>
         /// Końcowa ścieżka zwrócona przez algorytm.
-        /// Używana do wizualizacji przebiegu po zakończeniu benchmarku.
+        /// Używana do wizualizacji wyniku po odtworzeniu eksploracji.
         /// </summary>
         public List<Vector2Int> finalPath = new();
     }

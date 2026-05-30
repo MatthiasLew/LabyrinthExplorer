@@ -90,9 +90,11 @@ namespace Algorytm.Dane
                         ? firstAlgorithmSummary.algorithmName
                         : secondAlgorithmSummary.algorithmName,
                 moreReliableAlgorithmName =
-                    firstAlgorithmSummary.successRate >= secondAlgorithmSummary.successRate
-                        ? firstAlgorithmSummary.algorithmName
-                        : secondAlgorithmSummary.algorithmName,
+                    firstAlgorithmSummary.successRate == secondAlgorithmSummary.successRate
+                        ? string.Empty
+                        : (firstAlgorithmSummary.successRate > secondAlgorithmSummary.successRate
+                            ? firstAlgorithmSummary.algorithmName
+                            : secondAlgorithmSummary.algorithmName),
                 betterPathAlgorithmName = betterPathAlgorithmName
             };
         }

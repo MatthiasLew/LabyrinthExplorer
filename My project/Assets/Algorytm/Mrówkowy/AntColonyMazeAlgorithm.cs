@@ -26,7 +26,6 @@ namespace Algorytm.Mrówkowy
         public string AlgorithmVersion => "1.0.0";
 
         private const int AntCount = 40;
-        private const int MaxIterations = 150;
         private const int MinimumStepBudget = 128;
         private const int MaxStagnationIterations = 25;
 
@@ -88,36 +87,41 @@ namespace Algorytm.Mrówkowy
                 yield break;
             }
 
-            int shortestPathLength = maze.GetShortestPathLength(
-                context.startPosition,
-                context.finishPosition);
-
-            int moveBudget = Mathf.Clamp(
-                Mathf.Max(MinimumStepBudget, shortestPathLength * 2),
+            // Nie pobieramy trasy BFS przed działaniem kolonii.
+            // Budżet ruchów zależy wyłącznie od rozmiaru mapy.
+            int moveBudget = Mathf.Max(
                 MinimumStepBudget,
-                Mathf.Max(MinimumStepBudget, maze.Width * maze.Height * 2));
+                maze.Width * maze.Height * 2);
 
             Random.InitState(context.randomSeed);
 
             float[,] pheromones = CreateInitialPheromoneMap(maze);
 
             var globallyVisited = new HashSet<Vector2Int>();
+            // Zbiór wykorzystany przez końcowy BFS odpowiada wyłącznie trasom,
+            // które są pokazane podczas czytelnego replayu algorytmu.
+            var presentedDiscoveredCells = new HashSet<Vector2Int>();
+            var explorationTrace = new List<Vector2Int>();
             int revisitedCells = 0;
             int wallHits = 0;
             int deadEnds = 0;
             int validMoves = 0;
             int invalidMoves = 0;
 
-            AntRunData bestAntEver = null;
             float bestFitnessEver = float.MinValue;
             int stagnationCounter = 0;
             int bestIterationIndex = -1;
 
-            for (int iteration = 0; iteration < MaxIterations; iteration++)
+            // Algorytm nie kończy się porażką z powodu arbitralnego limitu iteracji.
+            // Do odtwarzania zapisujemy najlepszą mrówkę z każdej nieudanej iteracji.
+            // Gdy konkretna mrówka dotrze do mety, zatrzymujemy resztę kolonii natychmiast.
+            for (int iteration = 0; ; iteration++)
             {
                 profiler.BeginIteration();
 
                 var ants = new List<AntRunData>(AntCount);
+                AntRunData successfulAnt = null;
+                int successfulAntIndex = -1;
 
                 for (int antIndex = 0; antIndex < AntCount; antIndex++)
                 {
@@ -127,6 +131,7 @@ namespace Algorytm.Mrówkowy
                         context.startPosition,
                         context.finishPosition,
                         globallyVisited,
+                        explorationTrace,
                         ref revisitedCells,
                         ref wallHits,
                         ref deadEnds,
@@ -136,11 +141,29 @@ namespace Algorytm.Mrówkowy
                         moveBudget);
 
                     ants.Add(ant);
+
+                    if (ant.ReachedGoal)
+                    {
+                        successfulAnt = ant;
+                        successfulAntIndex = antIndex + 1;
+                        break;
+                    }
                 }
 
-                AntRunData bestAntThisIteration = ants
+                AntRunData bestAntThisIteration = successfulAnt ?? ants
                     .OrderByDescending(ant => ant.Fitness)
                     .First();
+
+                AddReplaySegment(
+                    result.replaySegments,
+                    bestAntThisIteration.Path,
+                    iteration + 1,
+                    successfulAntIndex,
+                    bestAntThisIteration.ReachedGoal);
+                AddPresentedDiscovery(
+                    bestAntThisIteration.Path,
+                    presentedDiscoveredCells,
+                    explorationTrace);
 
                 float averageFitness = ants.Average(ant => ant.Fitness);
 
@@ -152,7 +175,6 @@ namespace Algorytm.Mrówkowy
                 if (bestAntThisIteration.Fitness > bestFitnessEver)
                 {
                     bestFitnessEver = bestAntThisIteration.Fitness;
-                    bestAntEver = bestAntThisIteration.Clone();
                     stagnationCounter = 0;
                     bestIterationIndex = iteration;
                 }
@@ -164,9 +186,9 @@ namespace Algorytm.Mrówkowy
                 EvaporatePheromones(pheromones, maze);
                 DepositPheromones(pheromones, ants, maze, context.finishPosition);
 
-                if (bestAntThisIteration.ReachedGoal)
+                if (successfulAnt != null)
                 {
-                    FillResultFromAnt(result, bestAntThisIteration, maze, context);
+                    FillResultFromAnt(result, successfulAnt, maze, context, presentedDiscoveredCells);
                     FillSharedResultStats(
                         result,
                         globallyVisited,
@@ -177,7 +199,10 @@ namespace Algorytm.Mrówkowy
                         invalidMoves,
                         stagnationCounter,
                         iteration,
-                        "GoalReached");
+                        "GoalReached_FirstSuccessfulAnt_OptimizedWithinAntDiscovery");
+
+                    result.explorationTrace.Clear();
+                    result.explorationTrace.AddRange(explorationTrace);
 
                     profiler.EndIteration();
                     result.ApplyTo(metrics);
@@ -192,39 +217,49 @@ namespace Algorytm.Mrówkowy
                 }
 
                 profiler.EndIteration();
-
-                if (context.enableVisualization && context.stepDelaySeconds > 0f)
-                {
-                    profiler.BeginVisualization();
-                    yield return new WaitForSeconds(context.stepDelaySeconds);
-                    profiler.EndVisualization();
-                }
-                else
-                {
-                    yield return null;
-                }
+                yield return null;
             }
+        }
 
-            if (bestAntEver != null)
+        private static void AddReplaySegment(
+            List<AlgorithmReplaySegment> segments,
+            IReadOnlyList<Vector2Int> path,
+            int iteration,
+            int antIndex,
+            bool reachedGoal)
+        {
+            if (segments == null || path == null || path.Count == 0)
             {
-                FillResultFromAnt(result, bestAntEver, maze, context);
+                return;
             }
 
-            result.reachedGoal = false;
+            var segment = new AlgorithmReplaySegment
+            {
+                iteration = iteration,
+                agentIndex = antIndex,
+                reachedGoal = reachedGoal
+            };
+            segment.path.AddRange(path);
+            segments.Add(segment);
+        }
 
-            FillSharedResultStats(
-                result,
-                globallyVisited,
-                revisitedCells,
-                wallHits,
-                deadEnds,
-                validMoves,
-                invalidMoves,
-                stagnationCounter,
-                bestIterationIndex,
-                "MaxIterationsReached");
+        private static void AddPresentedDiscovery(
+            IReadOnlyList<Vector2Int> path,
+            HashSet<Vector2Int> discoveredCells,
+            List<Vector2Int> explorationTrace)
+        {
+            if (path == null || discoveredCells == null || explorationTrace == null)
+            {
+                return;
+            }
 
-            result.ApplyTo(metrics);
+            for (int i = 0; i < path.Count; i++)
+            {
+                if (discoveredCells.Add(path[i]))
+                {
+                    explorationTrace.Add(path[i]);
+                }
+            }
         }
 
         /// <summary>
@@ -343,6 +378,7 @@ namespace Algorytm.Mrówkowy
             Vector2Int start,
             Vector2Int finish,
             HashSet<Vector2Int> globallyVisited,
+            List<Vector2Int> explorationTrace,
             ref int revisitedCells,
             ref int wallHits,
             ref int deadEnds,
@@ -357,7 +393,10 @@ namespace Algorytm.Mrówkowy
             Vector2Int current = start;
             ant.Path.Add(current);
             localVisited.Add(current);
-            globallyVisited.Add(current);
+            if (globallyVisited.Add(current))
+            {
+                explorationTrace?.Add(current);
+            }
             onVisualizationStep?.Invoke(current);
 
             int initialDistance = maze.GetManhattanDistance(start, finish);
@@ -374,6 +413,17 @@ namespace Algorytm.Mrówkowy
                 {
                     deadEnds++;
                     break;
+                }
+
+                // Mrówka najpierw wybiera nowe komórki, a na wcześniej odwiedzone
+                // wraca tylko wtedy, gdy musi wycofać się ze ślepego zaułka.
+                List<Vector2Int> unvisitedNeighbors = neighbors
+                    .Where(neighbor => !localVisited.Contains(neighbor))
+                    .ToList();
+
+                if (unvisitedNeighbors.Count > 0)
+                {
+                    neighbors = unvisitedNeighbors;
                 }
 
                 Vector2Int next = SelectNextMove(
@@ -404,6 +454,11 @@ namespace Algorytm.Mrówkowy
                 }
 
                 bool wasVisitedGlobally = !globallyVisited.Add(current);
+                if (!wasVisitedGlobally)
+                {
+                    explorationTrace?.Add(current);
+                }
+
                 bool wasVisitedLocally = !localVisited.Add(current);
 
                 if (wasVisitedLocally)
@@ -518,20 +573,34 @@ namespace Algorytm.Mrówkowy
             MazeAlgorithmResult result,
             AntRunData ant,
             MazeGrid maze,
-            MazeAlgorithmContext context)
+            MazeAlgorithmContext context,
+            ISet<Vector2Int> discoveredCells)
         {
             result.reachedGoal = ant.ReachedGoal;
             result.stepsTaken = ant.StepsTaken;
-            result.pathLength = Mathf.Max(0, ant.Path.Count - 1);
             result.shortestPossiblePathLength = maze.GetShortestPathLength(
                 context.startPosition,
                 context.finishPosition);
 
             result.expandedNodes = ant.Path.Count;
             result.backtrackCount = ant.BacktrackCount;
-            
+
+            // BFS jest uruchamiany dopiero po dojściu mrówki do mety
+            // i działa wyłącznie na polach odkrytych przez tę kolonię.
+            List<Vector2Int> optimizedDiscoveredPath = ant.ReachedGoal
+                ? maze.GetShortestPathWithinCells(
+                    context.startPosition,
+                    context.finishPosition,
+                    discoveredCells)
+                : new List<Vector2Int>();
+
+            List<Vector2Int> pathToPresent = optimizedDiscoveredPath.Count > 0
+                ? optimizedDiscoveredPath
+                : ant.Path;
+
+            result.pathLength = Mathf.Max(0, pathToPresent.Count - 1);
             result.finalPath.Clear();
-            result.finalPath.AddRange(ant.Path);
+            result.finalPath.AddRange(pathToPresent);
         }
 
         /// <summary>
@@ -568,7 +637,8 @@ namespace Algorytm.Mrówkowy
             result.stagnationIterations = stagnationCounter;
             result.endReason = endReason;
             result.additionalInfo =
-                $"Ants={AntCount}; Alpha={Alpha}; Beta={Beta}; Evaporation={EvaporationRate}; BestIteration={bestIterationIndex + 1}";
+                $"Ants={AntCount}; Alpha={Alpha}; Beta={Beta}; Evaporation={EvaporationRate}; BestIteration={bestIterationIndex + 1}; " +
+                "Replay=best ant of each iteration; stop at first success; FinalPath=BFS over shown ant paths";
         }
 
         /// <summary>

@@ -144,6 +144,7 @@ namespace Algorytm.Genetyczny
             Vector2Int start,
             Vector2Int finish,
             HashSet<Vector2Int> globallyVisited,
+            List<Vector2Int> explorationTrace,
             ref int revisitedCells,
             ref int wallHits,
             ref int deadEnds,
@@ -171,7 +172,10 @@ namespace Algorytm.Genetyczny
 
             Path.Add(currentPosition);
             localVisited.Add(currentPosition);
-            globallyVisited.Add(currentPosition);
+            if (globallyVisited.Add(currentPosition))
+            {
+                explorationTrace?.Add(currentPosition);
+            }
 
             int initialDistance = maze.GetManhattanDistance(start, finish);
             int bestDistance = initialDistance;
@@ -201,6 +205,11 @@ namespace Algorytm.Genetyczny
                 }
 
                 bool wasVisitedGlobally = !globallyVisited.Add(currentPosition);
+                if (!wasVisitedGlobally)
+                {
+                    explorationTrace?.Add(currentPosition);
+                }
+
                 bool wasVisitedLocally = !localVisited.Add(currentPosition);
 
                 if (wasVisitedLocally)

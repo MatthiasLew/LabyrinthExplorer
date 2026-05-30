@@ -159,6 +159,50 @@ namespace Algorytm.Genetyczny
         }
 
         /// <summary>
+        /// Sprawdza, czy meta jest osiągalna bez wyznaczania trasy referencyjnej BFS.
+        /// Kontroler używa tej walidacji przed rozpoczęciem bezlimitowego wyszukiwania.
+        /// </summary>
+        public bool HasReachablePath(Vector2Int start, Vector2Int finish)
+        {
+            if (!IsWalkable(start) || !IsWalkable(finish))
+            {
+                return false;
+            }
+
+            if (start == finish)
+            {
+                return true;
+            }
+
+            var visited = new HashSet<Vector2Int> { start };
+            var stack = new Stack<Vector2Int>();
+            stack.Push(start);
+
+            while (stack.Count > 0)
+            {
+                Vector2Int current = stack.Pop();
+
+                foreach (Vector2Int neighbor in GetNeighbors(current))
+                {
+                    if (!IsWalkable(neighbor) || visited.Contains(neighbor))
+                    {
+                        continue;
+                    }
+
+                    if (neighbor == finish)
+                    {
+                        return true;
+                    }
+
+                    visited.Add(neighbor);
+                    stack.Push(neighbor);
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
         /// Oblicza długość najkrótszej ścieżki pomiędzy pozycją startową i końcową
         /// z użyciem przeszukiwania wszerz.
         /// </summary>
@@ -252,6 +296,73 @@ namespace Algorytm.Genetyczny
                 foreach (Vector2Int neighbor in GetNeighbors(current))
                 {
                     if (!IsWalkable(neighbor) || visited.Contains(neighbor))
+                    {
+                        continue;
+                    }
+
+                    visited.Add(neighbor);
+                    previousCells[neighbor] = current;
+                    queue.Enqueue(neighbor);
+                }
+            }
+
+            return path;
+        }
+
+        /// <summary>
+        /// Zwraca najkrótszą ścieżkę zbudowaną wyłącznie z komórek,
+        /// które zostały wcześniej odkryte przez konkretny algorytm.
+        /// Metoda jest uruchamiana dopiero po tym, gdy algorytm dotarł do mety.
+        /// </summary>
+        /// <param name="start">Pozycja startowa.</param>
+        /// <param name="finish">Pozycja końcowa.</param>
+        /// <param name="discoveredCells">Komórki odwiedzone przez dany przebieg algorytmu.</param>
+        /// <returns>Najkrótsza ścieżka dostępna w odkrytym podgrafie albo pusta lista.</returns>
+        public List<Vector2Int> GetShortestPathWithinCells(
+            Vector2Int start,
+            Vector2Int finish,
+            ISet<Vector2Int> discoveredCells)
+        {
+            var path = new List<Vector2Int>();
+
+            if (discoveredCells == null ||
+                !IsWalkable(start) ||
+                !IsWalkable(finish) ||
+                !discoveredCells.Contains(start) ||
+                !discoveredCells.Contains(finish))
+            {
+                return path;
+            }
+
+            var visited = new HashSet<Vector2Int> { start };
+            var queue = new Queue<Vector2Int>();
+            var previousCells = new Dictionary<Vector2Int, Vector2Int>();
+            queue.Enqueue(start);
+
+            while (queue.Count > 0)
+            {
+                Vector2Int current = queue.Dequeue();
+
+                if (current == finish)
+                {
+                    Vector2Int step = finish;
+                    path.Add(step);
+
+                    while (step != start)
+                    {
+                        step = previousCells[step];
+                        path.Add(step);
+                    }
+
+                    path.Reverse();
+                    return path;
+                }
+
+                foreach (Vector2Int neighbor in GetNeighbors(current))
+                {
+                    if (!IsWalkable(neighbor) ||
+                        !discoveredCells.Contains(neighbor) ||
+                        visited.Contains(neighbor))
                     {
                         continue;
                     }

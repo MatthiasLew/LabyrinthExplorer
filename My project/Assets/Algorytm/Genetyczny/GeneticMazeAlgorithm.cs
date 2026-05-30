@@ -25,7 +25,6 @@ namespace Algorytm.Genetyczny
         public string AlgorithmVersion => "1.0.0";
 
         private const int PopulationSize = 50;
-        private const int MaxGenerations = 200;
         private const float MutationChance = 0.08f;
         private const int MinimumChromosomeLength = 128;
         private const int TournamentSize = 3;
@@ -82,18 +81,19 @@ namespace Algorytm.Genetyczny
                 yield break;
             }
 
-            int shortestPathLength = maze.GetShortestPathLength(
-                context.startPosition,
-                context.finishPosition);
-
-            int moveBudget = Mathf.Clamp(
-                Mathf.Max(MinimumChromosomeLength, shortestPathLength * 2),
+            // Nie pobieramy trasy BFS przed działaniem algorytmu.
+            // Budżet ruchów zależy wyłącznie od rozmiaru mapy.
+            int moveBudget = Mathf.Max(
                 MinimumChromosomeLength,
-                Mathf.Max(MinimumChromosomeLength, maze.Width * maze.Height * 2));
+                maze.Width * maze.Height * 2);
 
             Random.InitState(context.randomSeed);
 
             var globallyVisited = new HashSet<Vector2Int>();
+            // Do odtwarzania i końcowego BFS dopuszczamy tylko ścieżki najlepszych
+            // potomków, które użytkownik faktycznie zobaczy na ekranie.
+            var presentedDiscoveredCells = new HashSet<Vector2Int>();
+            var explorationTrace = new List<Vector2Int>();
             var visualizedCells = context.enableVisualization ? new HashSet<Vector2Int>() : null;
             int revisitedCells = 0;
             int wallHits = 0;
@@ -105,10 +105,11 @@ namespace Algorytm.Genetyczny
             List<Chromosome> population = CreateInitialPopulation(moveBudget);
 
             float bestFitnessEver = float.MinValue;
-            Chromosome bestChromosomeEver = null;
             int stagnationCounter = 0;
 
-            for (int generation = 0; generation < MaxGenerations; generation++)
+            // Algorytm nie kończy się porażką z powodu arbitralnego limitu generacji.
+            // Skoro labirynt został zweryfikowany jako rozwiązywalny, szukamy aż do skutku.
+            for (int generation = 0; ; generation++)
             {
                 profiler.BeginIteration();
 
@@ -118,6 +119,7 @@ namespace Algorytm.Genetyczny
                     context.startPosition,
                     context.finishPosition,
                     globallyVisited,
+                    null,
                     ref revisitedCells,
                     ref wallHits,
                     ref deadEnds,
@@ -143,12 +145,23 @@ namespace Algorytm.Genetyczny
                 result.averageFitness = averageFitness;
                 result.frontierMaxSize = Mathf.Max(result.frontierMaxSize, population.Count);
 
-                if (bestOfGeneration.Fitness > bestFitnessEver)
+                bool newBestOffspring = bestOfGeneration.Fitness > bestFitnessEver;
+                if (newBestOffspring)
                 {
                     bestFitnessEver = bestOfGeneration.Fitness;
-                    bestChromosomeEver = bestOfGeneration.Clone();
                     bestGenerationIndex = generation;
                     stagnationCounter = 0;
+
+                    AddReplaySegment(
+                        result.replaySegments,
+                        bestOfGeneration.Path,
+                        generation + 1,
+                        1,
+                        bestOfGeneration.ReachedGoal);
+                    AddPresentedDiscovery(
+                        bestOfGeneration.Path,
+                        presentedDiscoveredCells,
+                        explorationTrace);
                 }
                 else
                 {
@@ -157,12 +170,26 @@ namespace Algorytm.Genetyczny
 
                 if (bestOfGeneration.ReachedGoal)
                 {
+                    if (!newBestOffspring)
+                    {
+                        AddReplaySegment(
+                            result.replaySegments,
+                            bestOfGeneration.Path,
+                            generation + 1,
+                            1,
+                            true);
+                        AddPresentedDiscovery(
+                            bestOfGeneration.Path,
+                            presentedDiscoveredCells,
+                            explorationTrace);
+                    }
+
                     if (context.enableVisualization && context.onVisualizationStep != null)
                     {
                         EmitPath(context.onVisualizationStep, bestOfGeneration.Path);
                     }
 
-                    FillResultFromChromosome(result, bestOfGeneration, maze, context);
+                    FillResultFromChromosome(result, bestOfGeneration, maze, context, presentedDiscoveredCells);
                     FillSharedResultStats(
                         result,
                         globallyVisited,
@@ -173,7 +200,10 @@ namespace Algorytm.Genetyczny
                         invalidMoves,
                         stagnationCounter,
                         generation,
-                        "GoalReached");
+                        "GoalReached_OptimizedWithinGeneticDiscovery");
+
+                    result.explorationTrace.Clear();
+                    result.explorationTrace.AddRange(explorationTrace);
 
                     profiler.EndIteration();
                     result.ApplyTo(metrics);
@@ -217,27 +247,6 @@ namespace Algorytm.Genetyczny
                     yield return null;
                 }
             }
-
-            if (bestChromosomeEver != null)
-            {
-                FillResultFromChromosome(result, bestChromosomeEver, maze, context);
-            }
-
-            result.reachedGoal = false;
-
-            FillSharedResultStats(
-                result,
-                globallyVisited,
-                revisitedCells,
-                wallHits,
-                deadEnds,
-                validMoves,
-                invalidMoves,
-                stagnationCounter,
-                bestGenerationIndex,
-                "MaxGenerationsReached");
-
-            result.ApplyTo(metrics);
         }
 
         private static void EmitNewVisitedCells(
@@ -269,6 +278,47 @@ namespace Algorytm.Genetyczny
             for (int i = 0; i < path.Count; i++)
             {
                 onStep(path[i]);
+            }
+        }
+
+        private static void AddReplaySegment(
+            List<AlgorithmReplaySegment> segments,
+            IReadOnlyList<Vector2Int> path,
+            int generation,
+            int offspringIndex,
+            bool reachedGoal)
+        {
+            if (segments == null || path == null || path.Count == 0)
+            {
+                return;
+            }
+
+            var segment = new AlgorithmReplaySegment
+            {
+                iteration = generation,
+                agentIndex = offspringIndex,
+                reachedGoal = reachedGoal
+            };
+            segment.path.AddRange(path);
+            segments.Add(segment);
+        }
+
+        private static void AddPresentedDiscovery(
+            IReadOnlyList<Vector2Int> path,
+            HashSet<Vector2Int> discoveredCells,
+            List<Vector2Int> explorationTrace)
+        {
+            if (path == null || discoveredCells == null || explorationTrace == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < path.Count; i++)
+            {
+                if (discoveredCells.Add(path[i]))
+                {
+                    explorationTrace.Add(path[i]);
+                }
             }
         }
 
@@ -307,6 +357,7 @@ namespace Algorytm.Genetyczny
             Vector2Int start,
             Vector2Int finish,
             HashSet<Vector2Int> globallyVisited,
+            List<Vector2Int> explorationTrace,
             ref int revisitedCells,
             ref int wallHits,
             ref int deadEnds,
@@ -320,6 +371,7 @@ namespace Algorytm.Genetyczny
                     start,
                     finish,
                     globallyVisited,
+                    explorationTrace,
                     ref revisitedCells,
                     ref wallHits,
                     ref deadEnds,
@@ -482,20 +534,35 @@ namespace Algorytm.Genetyczny
             MazeAlgorithmResult result,
             Chromosome chromosome,
             MazeGrid maze,
-            MazeAlgorithmContext context)
+            MazeAlgorithmContext context,
+            ISet<Vector2Int> discoveredCells)
         {
             result.reachedGoal = chromosome.ReachedGoal;
             result.stepsTaken = chromosome.StepsTaken;
-            result.pathLength = Mathf.Max(0, chromosome.Path.Count - 1);
             result.shortestPossiblePathLength = maze.GetShortestPathLength(
                 context.startPosition,
                 context.finishPosition);
 
             result.expandedNodes = chromosome.Path.Count;
             result.backtrackCount = chromosome.BacktrackCount;
-            
+
+            // BFS jest uruchamiany dopiero po znalezieniu mety przez algorytm
+            // i może korzystać wyłącznie z komórek odkrytych w jego przebiegu.
+            // Nie podstawia globalnego rozwiązania labiryntu jako wyniku genetycznego.
+            List<Vector2Int> optimizedDiscoveredPath = chromosome.ReachedGoal
+                ? maze.GetShortestPathWithinCells(
+                    context.startPosition,
+                    context.finishPosition,
+                    discoveredCells)
+                : new List<Vector2Int>();
+
+            List<Vector2Int> pathToPresent = optimizedDiscoveredPath.Count > 0
+                ? optimizedDiscoveredPath
+                : chromosome.Path;
+
+            result.pathLength = Mathf.Max(0, pathToPresent.Count - 1);
             result.finalPath.Clear();
-            result.finalPath.AddRange(chromosome.Path);
+            result.finalPath.AddRange(pathToPresent);
         }
 
         /// <summary>
@@ -532,7 +599,8 @@ namespace Algorytm.Genetyczny
             result.visitedCells = globallyVisited.Count;
             result.endReason = endReason;
             result.additionalInfo =
-                $"Population={PopulationSize}; Mutation={MutationChance}; BestGeneration={bestGenerationIndex + 1}";
+                $"Population={PopulationSize}; Mutation={MutationChance}; BestGeneration={bestGenerationIndex + 1}; " +
+                "Replay=new best offspring only; FinalPath=BFS over paths shown for Genetic Algorithm";
         }
     }
 }

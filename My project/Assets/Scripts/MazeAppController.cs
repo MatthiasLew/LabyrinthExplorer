@@ -76,12 +76,17 @@ public class MazeAppController : MonoBehaviour
     [SerializeField] private Color optimalPathColor = new Color(0.65f, 0.18f, 1f, 1f);
     [SerializeField] private Color visitedCellColor = new Color(0.45f, 0.65f, 1f, 1f);
     [SerializeField] private Color currentCellColor = new Color(1f, 1f, 0.25f, 1f);
+    [SerializeField] private Color geneticPreviousBestColor = new Color(0.54f, 0.75f, 0.98f, 1f);
+    [SerializeField] private Color geneticAgentMarkerColor = new Color(0.12f, 0.90f, 1f, 1f);
+    [SerializeField] private Color antPheromoneBaseColor = new Color(1f, 0.84f, 0.48f, 1f);
+    [SerializeField] private Color antAgentMarkerColor = new Color(1f, 0.42f, 0.04f, 1f);
     
     private MazeGrid currentMaze;
     private Vector2Int startPosition = new Vector2Int(0, 0);
     private Vector2Int finishPosition = new Vector2Int(9, 9);
 
     private Coroutine runningComparisonCoroutine;
+    private Coroutine pathReplayCoroutine;
     private AlgorithmComparisonResult lastComparisonResult;
     private BenchmarkHistoryStore benchmarkHistoryStore;
     private StatsPanelController statsPanelController;
@@ -294,6 +299,12 @@ public class MazeAppController : MonoBehaviour
         {
             StopCoroutine(runningComparisonCoroutine);
             runningComparisonCoroutine = null;
+        }
+
+        if (pathReplayCoroutine != null)
+        {
+            StopCoroutine(pathReplayCoroutine);
+            pathReplayCoroutine = null;
         }
 
         ClearEditorGridVisuals();
@@ -514,8 +525,9 @@ public class MazeAppController : MonoBehaviour
             return;
         }
 
-        int shortestPathLength = currentMaze.GetShortestPathLength(startPosition, finishPosition);
-        if (shortestPathLength <= 0)
+        // Przed startem sprawdzamy wyłącznie osiągalność metodą DFS.
+        // BFS dla prezentowanej trasy uruchomi dopiero dany algorytm po dotarciu do mety.
+        if (!currentMaze.HasReachablePath(startPosition, finishPosition))
         {
             UpdateInfo("Brak poprawnej ścieżki od startu do mety.");
             return;
@@ -523,8 +535,15 @@ public class MazeAppController : MonoBehaviour
 
         int seedToUse = randomSeed == 0 ? Environment.TickCount : randomSeed;
 
-        // Pomiary wykonujemy bez animacji. Aktualizacja UI i opóźnienia wizualizacji
-        // nie mogą wpływać na porównanie czasu algorytmów.
+        if (pathReplayCoroutine != null)
+        {
+            StopCoroutine(pathReplayCoroutine);
+            pathReplayCoroutine = null;
+        }
+
+        // Pomiary wykonujemy bez opóźnień UI, aby animacja nie zakłamywała czasu algorytmów.
+        // Algorytmy zapisują kolejność odkrywania pól; po pomiarze kontroler odtwarza
+        // eksplorację, a następnie wynik BFS wyznaczony wyłącznie z ich odkryć.
         var context = new MazeAlgorithmContext
         {
             mazeName = GetActiveMazeDisplayName(),
@@ -2497,10 +2516,17 @@ private void DrawBenchmarkPaths(string algorithmAName, string algorithmBName)
         DrawPath(algorithmBTileImages, bestAlgorithmBResult.finalPath, algorithmBPathColor);
     }
 
-    List<Vector2Int> optimalPath = currentMaze.GetShortestPath(startPosition, finishPosition);
+    // Nie rysujemy globalnej trasy BFS na obu planszach. finalPath każdego wyniku
+    // jest jego własną trasą BFS ograniczoną do komórek odkrytych przez ten algorytm.
+    if (bestAlgorithmAResult != null)
+    {
+        PaintOptimalPathOverlay(algorithmAOptimalOverlayImages, bestAlgorithmAResult.finalPath);
+    }
 
-    DrawPath(algorithmATileImages, optimalPath, optimalPathColor);
-    DrawPath(algorithmBTileImages, optimalPath, optimalPathColor);
+    if (bestAlgorithmBResult != null)
+    {
+        PaintOptimalPathOverlay(algorithmBOptimalOverlayImages, bestAlgorithmBResult.finalPath);
+    }
 }
 
 private AlgorithmMetrics GetBestMetricsForAlgorithm(string algorithmName)
@@ -3549,6 +3575,12 @@ private static bool IsBetterMetrics(AlgorithmMetrics candidate, AlgorithmMetrics
                 : "no successful solutions")
             : ShortAlgorithmName(result.betterPathAlgorithmName);
 
+        string reliabilityText = Mathf.Approximately(
+            result.firstAlgorithmSummary.successRate,
+            result.secondAlgorithmSummary.successRate)
+                ? (currentLanguage == AppLanguage.Polski ? "remis" : "tie")
+                : ShortAlgorithmName(result.moreReliableAlgorithmName);
+
         if (wynikAText != null)
         {
             wynikAText.text = FormatBenchmarkSummaryText(
@@ -3573,21 +3605,21 @@ private static bool IsBetterMetrics(AlgorithmMetrics candidate, AlgorithmMetrics
         {
             UpdateInfo(
                 $"BENCHMARK — {GetActiveMazeDisplayName()} ({currentMaze.Width}x{currentMaze.Height})\n" +
-                $"Próby: {result.firstAlgorithmSummary.runCount} | Idealna długość BFS: {optimalLength}\n" +
+                $"Próby: {result.firstAlgorithmSummary.runCount} | Kontrolne minimum całej mapy: {optimalLength}\n" +
                 $"Szybszy: {ShortAlgorithmName(result.fasterAlgorithmName)} | " +
-                $"Niezawodny: {ShortAlgorithmName(result.moreReliableAlgorithmName)} | " +
+                $"Niezawodny: {reliabilityText} | " +
                 $"Lepsza ścieżka: {betterPathText}\n" +
-                "Legenda: niebieski = Genetyczny, pomarańczowy = Mrówkowy, fioletowy znacznik = BFS");
+                "Legenda: niebieski/jasnoniebieski = kolejne najlepsze potomstwa, pomarańczowy = feromon mrówek, fioletowy środek = BFS po sukcesie");
         }
         else
         {
             UpdateInfo(
                 $"BENCHMARK — {GetActiveMazeDisplayName()} ({currentMaze.Width}x{currentMaze.Height})\n" +
-                $"Runs: {result.firstAlgorithmSummary.runCount} | Optimal BFS length: {optimalLength}\n" +
+                $"Runs: {result.firstAlgorithmSummary.runCount} | Full-maze control minimum: {optimalLength}\n" +
                 $"Faster: {ShortAlgorithmName(result.fasterAlgorithmName)} | " +
-                $"Reliable: {ShortAlgorithmName(result.moreReliableAlgorithmName)} | " +
+                $"Reliable: {reliabilityText} | " +
                 $"Better path: {betterPathText}\n" +
-                "Legend: blue = Genetic, orange = Ant Colony, violet marker = BFS");
+                "Legend: blue/pale blue = successive best offspring, orange = ant pheromone trail, violet centre = post-success BFS");
         }
 
         EnsureComparisonAreaLayout();
@@ -3620,8 +3652,8 @@ private static bool IsBetterMetrics(AlgorithmMetrics candidate, AlgorithmMetrics
         if (summary.successfulRunCount > 0)
         {
             pathLengthText = language == AppLanguage.Polski
-                ? $"Średnia długość ścieżki (udane): {summary.averageSuccessfulPathLength:F2}"
-                : $"Average path length (successful): {summary.averageSuccessfulPathLength:F2}";
+                ? $"Średnia trasa BFS z odkryć algorytmu: {summary.averageSuccessfulPathLength:F2}"
+                : $"Average BFS path within discovered cells: {summary.averageSuccessfulPathLength:F2}";
 
             pathEfficiencyText = language == AppLanguage.Polski
                 ? $"Średnia efektywność (udane): {summary.averageSuccessfulPathEfficiency:F2}"
@@ -3654,40 +3686,281 @@ private static bool IsBetterMetrics(AlgorithmMetrics candidate, AlgorithmMetrics
 
     private void PaintBestPathsFromMetrics(AlgorithmComparisonResult result)
     {
-        activeVisualizationTarget = VisualizationTarget.None;
-
         if (result == null || benchmarkRunner == null || currentMaze == null)
         {
             return;
         }
 
-        // Wynik końcowy ma być czytelny: nie zostawiamy śladu eksploracji.
+        if (pathReplayCoroutine != null)
+        {
+            StopCoroutine(pathReplayCoroutine);
+        }
+
+        pathReplayCoroutine = StartCoroutine(AnimateBestPathsFromMetrics(result));
+    }
+
+    /// <summary>
+    /// Odtwarza algorytmy w dwóch różnych, czytelnych modelach prezentacji:
+    /// genetyczny pokazuje kolejne nowe najlepsze potomstwa, natomiast mrówkowy
+    /// pokazuje najlepszą mrówkę każdej iteracji i narastanie śladu feromonowego.
+    /// Dopiero po sukcesie rysowana jest trasa BFS ograniczona do odkryć algorytmu.
+    /// Czas tej animacji nie jest doliczany do czasu benchmarku.
+    /// </summary>
+    private IEnumerator AnimateBestPathsFromMetrics(AlgorithmComparisonResult result)
+    {
+        activeVisualizationTarget = VisualizationTarget.None;
         ResetRunnerTraversalVisualization();
         ResetOptimalPathOverlays();
 
-        DisplayBenchmarkResults(result);
-
-        AlgorithmMetrics firstMetrics =
+        AlgorithmMetrics geneticMetrics =
             FindBestMetricsForAlgorithm(result.firstAlgorithmSummary.algorithmName);
-
-        AlgorithmMetrics secondMetrics =
+        AlgorithmMetrics antMetrics =
             FindBestMetricsForAlgorithm(result.secondAlgorithmSummary.algorithmName);
 
-        if (firstMetrics != null)
+        IReadOnlyList<AlgorithmReplaySegment> geneticSegments = geneticMetrics != null
+            ? geneticMetrics.replaySegments
+            : null;
+        IReadOnlyList<AlgorithmReplaySegment> antSegments = antMetrics != null
+            ? antMetrics.replaySegments
+            : null;
+
+        int geneticSegmentCount = geneticSegments != null ? geneticSegments.Count : 0;
+        int antSegmentCount = antSegments != null ? antSegments.Count : 0;
+        int maximumSegmentCount = Mathf.Max(geneticSegmentCount, antSegmentCount);
+        float motionDelay = Mathf.Clamp(stepDelaySeconds * 0.55f, 0.006f, 0.035f);
+        float bfsDelay = Mathf.Clamp(stepDelaySeconds, 0.012f, 0.08f);
+
+        var geneticHistory = new HashSet<Vector2Int>();
+        var antHeat = new Dictionary<Vector2Int, int>();
+        Vector2Int? geneticMarker = null;
+        Vector2Int? antMarker = null;
+
+        UpdateInfo(currentLanguage == AppLanguage.Polski
+            ? "SYMULACJA WYSZUKIWANIA\nGenetyczny: niebieski = aktualnie najlepsze potomstwo, jasny ślad = poprzednie najlepsze. Mrówkowy: pomarańczowy ślad ciemnieje wraz z feromonem."
+            : "SEARCH REPLAY\nGenetic: blue = current best offspring, pale trail = former best. Ant Colony: orange trail becomes stronger with pheromone reinforcement.");
+
+        for (int segmentIndex = 0; segmentIndex < maximumSegmentCount; segmentIndex++)
         {
-            PaintPath(algorithmATileImages, firstMetrics.finalPath, algorithmAPathColor);
+            AlgorithmReplaySegment geneticSegment = segmentIndex < geneticSegmentCount
+                ? geneticSegments[segmentIndex]
+                : null;
+            AlgorithmReplaySegment antSegment = segmentIndex < antSegmentCount
+                ? antSegments[segmentIndex]
+                : null;
+
+            if (geneticSegment != null)
+            {
+                FadeGeneticHistory(geneticHistory);
+                SetGeneticReplayText(geneticSegment);
+            }
+
+            if (antSegment != null)
+            {
+                SetAntReplayText(antSegment);
+            }
+
+            int geneticPathLength = geneticSegment != null && geneticSegment.path != null
+                ? geneticSegment.path.Count
+                : 0;
+            int antPathLength = antSegment != null && antSegment.path != null
+                ? antSegment.path.Count
+                : 0;
+            int maximumPathLength = Mathf.Max(geneticPathLength, antPathLength);
+
+            for (int pathIndex = 0; pathIndex < maximumPathLength; pathIndex++)
+            {
+                if (pathIndex < geneticPathLength)
+                {
+                    Vector2Int position = geneticSegment.path[pathIndex];
+                    PaintRunnerCell(algorithmATileImages, position, algorithmAPathColor);
+                    geneticHistory.Add(position);
+                    MoveReplayMarker(
+                        algorithmAOptimalOverlayImages,
+                        ref geneticMarker,
+                        position,
+                        geneticAgentMarkerColor);
+                }
+
+                if (pathIndex < antPathLength)
+                {
+                    Vector2Int position = antSegment.path[pathIndex];
+                    PaintAntPheromoneStep(position, antHeat);
+                    MoveReplayMarker(
+                        algorithmBOptimalOverlayImages,
+                        ref antMarker,
+                        position,
+                        antAgentMarkerColor);
+                }
+
+                yield return new WaitForSeconds(motionDelay);
+            }
+
+            ClearReplayMarker(algorithmAOptimalOverlayImages, ref geneticMarker);
+            ClearReplayMarker(algorithmBOptimalOverlayImages, ref antMarker);
+            yield return new WaitForSeconds(0.10f);
         }
 
-        if (secondMetrics != null)
+        ResetOptimalPathOverlays();
+        yield return new WaitForSeconds(0.25f);
+
+        UpdateInfo(currentLanguage == AppLanguage.Polski
+            ? "OPTYMALIZACJA PO SUKCESIE\nFioletowy środek = BFS uruchomiony dopiero po znalezieniu mety, wyłącznie po polach odkrytych przez dany algorytm."
+            : "POST-SUCCESS OPTIMIZATION\nViolet centre = BFS started only after reaching the goal, using only cells discovered by the given algorithm.");
+
+        IReadOnlyList<Vector2Int> geneticPath = geneticMetrics != null ? geneticMetrics.finalPath : null;
+        IReadOnlyList<Vector2Int> antPath = antMetrics != null ? antMetrics.finalPath : null;
+        int geneticPathCount = geneticPath != null ? geneticPath.Count : 0;
+        int antPathCount = antPath != null ? antPath.Count : 0;
+        int maximumFinalPathCount = Mathf.Max(geneticPathCount, antPathCount);
+
+        for (int pathIndex = 0; pathIndex < maximumFinalPathCount; pathIndex++)
         {
-            PaintPath(algorithmBTileImages, secondMetrics.finalPath, algorithmBPathColor);
+            if (pathIndex < geneticPathCount)
+            {
+                PaintAlgorithmBfsStep(
+                    algorithmATileImages,
+                    algorithmAOptimalOverlayImages,
+                    geneticPath[pathIndex],
+                    algorithmAPathColor);
+            }
+
+            if (pathIndex < antPathCount)
+            {
+                PaintAlgorithmBfsStep(
+                    algorithmBTileImages,
+                    algorithmBOptimalOverlayImages,
+                    antPath[pathIndex],
+                    algorithmBPathColor);
+            }
+
+            yield return new WaitForSeconds(bfsDelay);
         }
 
-        List<Vector2Int> optimalPath =
-            currentMaze.GetShortestPath(startPosition, finishPosition);
+        DisplayBenchmarkResults(result);
+        pathReplayCoroutine = null;
+    }
 
-        PaintOptimalPathOverlay(algorithmAOptimalOverlayImages, optimalPath);
-        PaintOptimalPathOverlay(algorithmBOptimalOverlayImages, optimalPath);
+    private void SetGeneticReplayText(AlgorithmReplaySegment segment)
+    {
+        if (wynikAText == null || segment == null)
+        {
+            return;
+        }
+
+        wynikAText.text = currentLanguage == AppLanguage.Polski
+            ? $"ALGORYTM GENETYCZNY\nPokolenie: {segment.iteration}\n{(segment.reachedGoal ? "Potomstwo dotarło do mety." : "Nowe najlepsze potomstwo.")}"
+            : $"GENETIC ALGORITHM\nGeneration: {segment.iteration}\n{(segment.reachedGoal ? "Offspring reached the goal." : "New best offspring.")}";
+    }
+
+    private void SetAntReplayText(AlgorithmReplaySegment segment)
+    {
+        if (wynikBText == null || segment == null)
+        {
+            return;
+        }
+
+        string antDescriptionPl = segment.reachedGoal
+            ? $"Mrówka {Mathf.Max(1, segment.agentIndex)}/{40} dotarła do mety."
+            : "Najlepsza mrówka iteracji — wzmacnianie feromonu.";
+        string antDescriptionEn = segment.reachedGoal
+            ? $"Ant {Mathf.Max(1, segment.agentIndex)}/{40} reached the goal."
+            : "Best ant of iteration — pheromone reinforcement.";
+
+        wynikBText.text = currentLanguage == AppLanguage.Polski
+            ? $"ALGORYTM MRÓWKOWY\nIteracja: {segment.iteration}\n{antDescriptionPl}"
+            : $"ANT COLONY ALGORITHM\nIteration: {segment.iteration}\n{antDescriptionEn}";
+    }
+
+    private void FadeGeneticHistory(IEnumerable<Vector2Int> positions)
+    {
+        if (positions == null)
+        {
+            return;
+        }
+
+        foreach (Vector2Int position in positions)
+        {
+            PaintRunnerCell(algorithmATileImages, position, geneticPreviousBestColor);
+        }
+    }
+
+    private void PaintAntPheromoneStep(Vector2Int position, Dictionary<Vector2Int, int> heat)
+    {
+        if (heat == null || position == startPosition || position == finishPosition)
+        {
+            return;
+        }
+
+        int value = heat.TryGetValue(position, out int previousValue)
+            ? previousValue + 1
+            : 1;
+        heat[position] = value;
+
+        float strength = Mathf.Clamp01(0.25f + value * 0.16f);
+        Color pheromoneColor = Color.Lerp(antPheromoneBaseColor, algorithmBPathColor, strength);
+        PaintRunnerCell(algorithmBTileImages, position, pheromoneColor);
+    }
+
+    private void MoveReplayMarker(
+        Image[,] overlays,
+        ref Vector2Int? previousPosition,
+        Vector2Int position,
+        Color markerColor)
+    {
+        ClearReplayMarker(overlays, ref previousPosition);
+
+        if (overlays == null || currentMaze == null || !currentMaze.IsInside(position) ||
+            position == startPosition || position == finishPosition)
+        {
+            previousPosition = position;
+            return;
+        }
+
+        Image marker = overlays[position.x, position.y];
+        if (marker != null)
+        {
+            marker.color = markerColor;
+            marker.gameObject.SetActive(true);
+        }
+
+        previousPosition = position;
+    }
+
+    private void ClearReplayMarker(Image[,] overlays, ref Vector2Int? previousPosition)
+    {
+        if (overlays != null && currentMaze != null && previousPosition.HasValue &&
+            currentMaze.IsInside(previousPosition.Value))
+        {
+            Image marker = overlays[previousPosition.Value.x, previousPosition.Value.y];
+            if (marker != null)
+            {
+                marker.gameObject.SetActive(false);
+            }
+        }
+
+        previousPosition = null;
+    }
+
+    private void PaintAlgorithmBfsStep(
+        Image[,] targetTiles,
+        Image[,] overlays,
+        Vector2Int position,
+        Color pathColor)
+    {
+        PaintRunnerCell(targetTiles, position, pathColor);
+
+        if (overlays == null || currentMaze == null || !currentMaze.IsInside(position) ||
+            position == startPosition || position == finishPosition)
+        {
+            return;
+        }
+
+        Image overlay = overlays[position.x, position.y];
+        if (overlay != null)
+        {
+            overlay.color = optimalPathColor;
+            overlay.gameObject.SetActive(true);
+        }
     }
 
     private AlgorithmMetrics FindBestMetricsForAlgorithm(string algorithmName)
@@ -4088,6 +4361,12 @@ private static bool IsBetterMetrics(AlgorithmMetrics candidate, AlgorithmMetrics
     {
         lastComparisonResult = null;
         activeVisualizationTarget = VisualizationTarget.None;
+
+        if (pathReplayCoroutine != null)
+        {
+            StopCoroutine(pathReplayCoroutine);
+            pathReplayCoroutine = null;
+        }
 
         ResetRunnerTraversalVisualization();
         ResetOptimalPathOverlays();

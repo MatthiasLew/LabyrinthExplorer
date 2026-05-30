@@ -1,6 +1,7 @@
 using Statistics;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 
 public class AppUIManager : MonoBehaviour
 {
@@ -24,6 +25,11 @@ public class AppUIManager : MonoBehaviour
     [Header("Statistics")]
     [SerializeField] private StatsPanelController statsPanelController;
 
+    private void Awake()
+    {
+        BindBackButtonsAtRuntime();
+    }
+
     private void Start()
     {
         if (!openAppSceneFromMainMenu)
@@ -39,6 +45,29 @@ public class AppUIManager : MonoBehaviour
     public void GoToMainMenu()
     {
         SceneManager.LoadSceneAsync("MainMenuScene");
+    }
+
+    /// <summary>
+    /// Awaryjnie podpina przyciski powrotu w runtime. Dzięki temu ekran pomiarów
+    /// nie zostaje bez wyjścia nawet wtedy, gdy referencja OnClick w scenie zniknie.
+    /// </summary>
+    private void BindBackButtonsAtRuntime()
+    {
+        Button[] buttons = Resources.FindObjectsOfTypeAll<Button>();
+        for (int i = 0; i < buttons.Length; i++)
+        {
+            Button button = buttons[i];
+            if (button == null ||
+                !button.gameObject.scene.IsValid() ||
+                button.gameObject.scene != gameObject.scene ||
+                button.name != "BtnBack")
+            {
+                continue;
+            }
+
+            button.onClick.RemoveListener(GoToMainMenu);
+            button.onClick.AddListener(GoToMainMenu);
+        }
     }
 
     public void GoToAppScene()
