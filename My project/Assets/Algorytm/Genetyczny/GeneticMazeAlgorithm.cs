@@ -5,7 +5,7 @@ using System.Linq;
 using Algorytm.Dane;
 using Algorytm.System;
 using UnityEngine;
-using Random = UnityEngine.Random;
+using Stopwatch = System.Diagnostics.Stopwatch;
 
 namespace Algorytm.Genetyczny
 {
@@ -22,13 +22,14 @@ namespace Algorytm.Genetyczny
         /// <summary>
         /// Wersja implementacji algorytmu.
         /// </summary>
-        public string AlgorithmVersion => "1.0.0";
+        public string AlgorithmVersion => "1.1.0";
 
         private const int PopulationSize = 50;
         private const float MutationChance = 0.08f;
         private const int MinimumChromosomeLength = 128;
         private const int TournamentSize = 3;
         private const int MaxStagnationGenerations = 30;
+        private const int MaxReplaySegments = 20;
 
         /// <summary>
         /// Uruchamia algorytm genetyczny dla zadanego kontekstu i zapisuje wynik do przekazanego obiektu metryk.
@@ -87,7 +88,10 @@ namespace Algorytm.Genetyczny
                 MinimumChromosomeLength,
                 maze.Width * maze.Height * 2);
 
-            Random.InitState(context.randomSeed);
+            var rng = new global::System.Random(context.randomSeed);
+            int maxGenerations = context.maxIterations > 0 ? context.maxIterations : 500;
+            double maxRuntimeMs = context.maxRuntimeMs > 0d ? context.maxRuntimeMs : 10000d;
+            var runTimer = Stopwatch.StartNew();
 
             var globallyVisited = new HashSet<Vector2Int>();
             // Do odtwarzania i końcowego BFS dopuszczamy tylko ścieżki najlepszych
@@ -102,15 +106,20 @@ namespace Algorytm.Genetyczny
             int invalidMoves = 0;
             int bestGenerationIndex = -1;
 
-            List<Chromosome> population = CreateInitialPopulation(moveBudget);
+            List<Chromosome> population = CreateInitialPopulation(moveBudget, rng);
 
             float bestFitnessEver = float.MinValue;
             int stagnationCounter = 0;
 
-            // Algorytm nie kończy się porażką z powodu arbitralnego limitu generacji.
-            // Skoro labirynt został zweryfikowany jako rozwiązywalny, szukamy aż do skutku.
-            for (int generation = 0; ; generation++)
+            // Przebieg jest ograniczony czasowo i iteracyjnie, aby benchmark zawsze kończył się deterministycznie.
+            for (int generation = 0; generation < maxGenerations; generation++)
             {
+                if (runTimer.Elapsed.TotalMilliseconds >= maxRuntimeMs)
+                {
+                    result.endReason = "Timeout";
+                    break;
+                }
+
                 profiler.BeginIteration();
 
                 EvaluatePopulation(
@@ -152,16 +161,19 @@ namespace Algorytm.Genetyczny
                     bestGenerationIndex = generation;
                     stagnationCounter = 0;
 
-                    AddReplaySegment(
-                        result.replaySegments,
-                        bestOfGeneration.Path,
-                        generation + 1,
-                        1,
-                        bestOfGeneration.ReachedGoal);
-                    AddPresentedDiscovery(
-                        bestOfGeneration.Path,
-                        presentedDiscoveredCells,
-                        explorationTrace);
+                    if (result.replaySegments.Count < MaxReplaySegments || bestOfGeneration.ReachedGoal)
+                    {
+                        AddReplaySegment(
+                            result.replaySegments,
+                            bestOfGeneration.Path,
+                            generation + 1,
+                            1,
+                            bestOfGeneration.ReachedGoal);
+                        AddPresentedDiscovery(
+                            bestOfGeneration.Path,
+                            presentedDiscoveredCells,
+                            explorationTrace);
+                    }
                 }
                 else
                 {
@@ -213,7 +225,7 @@ namespace Algorytm.Genetyczny
                 if (stagnationCounter >= MaxStagnationGenerations)
                 {
                     result.restartCount++;
-                    population = CreateInitialPopulation(moveBudget);
+                    population = CreateInitialPopulation(moveBudget, rng);
                     stagnationCounter = 0;
 
                     profiler.EndIteration();
@@ -232,7 +244,7 @@ namespace Algorytm.Genetyczny
                     continue;
                 }
 
-                population = CreateNextGeneration(population);
+                population = CreateNextGeneration(population, rng);
 
                 profiler.EndIteration();
 
@@ -247,9 +259,36 @@ namespace Algorytm.Genetyczny
                     yield return null;
                 }
             }
+
+            result.reachedGoal = false;
+            result.finalPath.Clear();
+            result.rawFinalPath.Clear();
+            result.pathLength = 0;
+            result.optimizedDiscoveredPathLength = 0;
+            result.explorationTrace.Clear();
+            result.explorationTrace.AddRange(explorationTrace);
+
+            string failureReason = string.IsNullOrWhiteSpace(result.endReason)
+                ? "MaxGenerationsReached"
+                : result.endReason;
+
+            FillSharedResultStats(
+                result,
+                globallyVisited,
+                revisitedCells,
+                wallHits,
+                deadEnds,
+                validMoves,
+                invalidMoves,
+                stagnationCounter,
+                bestGenerationIndex,
+                failureReason);
+
+            result.additionalInfo += $"; MaxGenerations={maxGenerations}; MaxRuntimeMs={maxRuntimeMs:F0}";
+            result.ApplyTo(metrics);
         }
 
-        private static void EmitNewVisitedCells(
+        private static void EmitNewVisitedCells (
             HashSet<Vector2Int> globallyVisited,
             HashSet<Vector2Int> visualizedCells,
             Action<Vector2Int> onStep)
@@ -326,13 +365,13 @@ namespace Algorytm.Genetyczny
         /// Tworzy początkową populację losowych chromosomów.
         /// </summary>
         /// <returns>Lista chromosomów o rozmiarze równym konfiguracji populacji.</returns>
-        private static List<Chromosome> CreateInitialPopulation(int chromosomeLength)
+        private static List<Chromosome> CreateInitialPopulation(int chromosomeLength, global::System.Random rng)
         {
             var population = new List<Chromosome>(PopulationSize);
 
             for (int i = 0; i < PopulationSize; i++)
             {
-                population.Add(Chromosome.CreateRandom(chromosomeLength));
+                population.Add(Chromosome.CreateRandom(chromosomeLength, rng));
             }
 
             return population;
@@ -391,7 +430,7 @@ namespace Algorytm.Genetyczny
         /// <exception cref="ArgumentException">
         /// Rzucany, gdy populacja zawiera mniej niż dwóch osobników.
         /// </exception>
-        private static List<Chromosome> CreateNextGeneration(List<Chromosome> sortedPopulation)
+        private static List<Chromosome> CreateNextGeneration(List<Chromosome> sortedPopulation, global::System.Random rng)
         {
             if (sortedPopulation == null)
             {
@@ -411,11 +450,11 @@ namespace Algorytm.Genetyczny
 
             while (nextPopulation.Count < PopulationSize)
             {
-                Chromosome parentA = TournamentSelect(sortedPopulation);
-                Chromosome parentB = TournamentSelect(sortedPopulation);
+                Chromosome parentA = TournamentSelect(sortedPopulation, rng);
+                Chromosome parentB = TournamentSelect(sortedPopulation, rng);
 
-                Chromosome child = Crossover(parentA, parentB);
-                Mutate(child);
+                Chromosome child = Crossover(parentA, parentB, rng);
+                Mutate(child, rng);
 
                 nextPopulation.Add(child);
             }
@@ -434,7 +473,7 @@ namespace Algorytm.Genetyczny
         /// <exception cref="ArgumentException">
         /// Rzucany, gdy populacja jest pusta.
         /// </exception>
-        private static Chromosome TournamentSelect(List<Chromosome> population)
+        private static Chromosome TournamentSelect(List<Chromosome> population, global::System.Random rng)
         {
             if (population == null)
             {
@@ -450,7 +489,7 @@ namespace Algorytm.Genetyczny
 
             for (int i = 0; i < TournamentSize; i++)
             {
-                Chromosome candidate = population[Random.Range(0, population.Count)];
+                Chromosome candidate = population[rng.Next(0, population.Count)];
                 if (best == null || candidate.Fitness > best.Fitness)
                 {
                     best = candidate;
@@ -472,7 +511,7 @@ namespace Algorytm.Genetyczny
         /// <exception cref="ArgumentException">
         /// Rzucany, gdy rodzice mają różne długości chromosomów.
         /// </exception>
-        private static Chromosome Crossover(Chromosome a, Chromosome b)
+        private static Chromosome Crossover(Chromosome a, Chromosome b, global::System.Random rng)
         {
             if (a == null)
             {
@@ -490,7 +529,7 @@ namespace Algorytm.Genetyczny
             }
 
             var child = new Chromosome(a.Genes.Length);
-            int splitIndex = Random.Range(1, a.Genes.Length - 1);
+            int splitIndex = rng.Next(1, a.Genes.Length - 1);
 
             for (int i = 0; i < a.Genes.Length; i++)
             {
@@ -507,7 +546,7 @@ namespace Algorytm.Genetyczny
         /// <exception cref="ArgumentNullException">
         /// Rzucany, gdy parametr <paramref name="chromosome"/> ma wartość null.
         /// </exception>
-        private static void Mutate(Chromosome chromosome)
+        private static void Mutate(Chromosome chromosome, global::System.Random rng)
         {
             if (chromosome == null)
             {
@@ -516,9 +555,9 @@ namespace Algorytm.Genetyczny
 
             for (int i = 0; i < chromosome.Genes.Length; i++)
             {
-                if (Random.value < MutationChance)
+                if (rng.NextDouble() < MutationChance)
                 {
-                    chromosome.Genes[i] = (MoveDirection)Random.Range(0, 4);
+                    chromosome.Genes[i] = (MoveDirection)rng.Next(0, 4);
                 }
             }
         }
@@ -560,9 +599,22 @@ namespace Algorytm.Genetyczny
                 ? optimizedDiscoveredPath
                 : chromosome.Path;
 
-            result.pathLength = Mathf.Max(0, pathToPresent.Count - 1);
+            result.pathLength = chromosome.ReachedGoal ? Mathf.Max(0, chromosome.Path.Count - 1) : 0;
+            result.optimizedDiscoveredPathLength = chromosome.ReachedGoal
+                ? Mathf.Max(0, pathToPresent.Count - 1)
+                : 0;
+
+            result.rawFinalPath.Clear();
+            if (chromosome.ReachedGoal)
+            {
+                result.rawFinalPath.AddRange(chromosome.Path);
+            }
+
             result.finalPath.Clear();
-            result.finalPath.AddRange(pathToPresent);
+            if (chromosome.ReachedGoal)
+            {
+                result.finalPath.AddRange(pathToPresent);
+            }
         }
 
         /// <summary>
@@ -600,7 +652,8 @@ namespace Algorytm.Genetyczny
             result.endReason = endReason;
             result.additionalInfo =
                 $"Population={PopulationSize}; Mutation={MutationChance}; BestGeneration={bestGenerationIndex + 1}; " +
-                "Replay=new best offspring only; FinalPath=BFS over paths shown for Genetic Algorithm";
+                $"Replay=up to {MaxReplaySegments} new best offspring plus winning offspring; RawPath=successful offspring; " +
+                "PresentedPath=BFS over shown Genetic cells";
         }
     }
 }

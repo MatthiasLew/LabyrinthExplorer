@@ -78,8 +78,18 @@ namespace Algorytm.System
                 MazeAlgorithmContext firstContext = CloneContext(baseContext, runSeed);
                 MazeAlgorithmContext secondContext = CloneContext(baseContext, runSeed);
 
-                yield return RunSingleAlgorithm(firstAlgorithm, firstContext, runIndex, firstAlgorithmMetrics);
-                yield return RunSingleAlgorithm(secondAlgorithm, secondContext, runIndex, secondAlgorithmMetrics);
+                // Naprzemienna kolejność ogranicza bias: pierwszy uruchamiany algorytm
+                // nie ma zawsze tych samych warunków rozgrzewki pamięci i runtime.
+                if (runIndex % 2 == 0)
+                {
+                    yield return RunSingleAlgorithm(firstAlgorithm, firstContext, runIndex, firstAlgorithmMetrics);
+                    yield return RunSingleAlgorithm(secondAlgorithm, secondContext, runIndex, secondAlgorithmMetrics);
+                }
+                else
+                {
+                    yield return RunSingleAlgorithm(secondAlgorithm, secondContext, runIndex, secondAlgorithmMetrics);
+                    yield return RunSingleAlgorithm(firstAlgorithm, firstContext, runIndex, firstAlgorithmMetrics);
+                }
             }
 
             AlgorithmSummary firstSummary = AlgorithmSummary.FromMetrics(firstAlgorithmMetrics);
@@ -282,6 +292,8 @@ namespace Algorytm.System
                 startPosition = sourceContext.startPosition,
                 finishPosition = sourceContext.finishPosition,
                 randomSeed = randomSeed,
+                maxIterations = sourceContext.maxIterations,
+                maxRuntimeMs = sourceContext.maxRuntimeMs,
                 enableVisualization = sourceContext.enableVisualization,
                 stepDelaySeconds = sourceContext.stepDelaySeconds,
                 mazeData = sourceContext.mazeData,

@@ -91,9 +91,19 @@ namespace Algorytm.Dane
         public double averageSuccessfulPathLength;
 
         /// <summary>
-        /// Średnia efektywność ścieżki obliczona tylko dla udanych uruchomień.
+        /// Średnia efektywność surowej ścieżki algorytmu, liczona tylko dla sukcesów.
         /// </summary>
         public double averageSuccessfulPathEfficiency;
+
+        /// <summary>
+        /// Średnia długość ścieżki BFS ograniczonej do odkryć algorytmu, tylko dla sukcesów.
+        /// </summary>
+        public double averageSuccessfulOptimizedPathLength;
+
+        /// <summary>
+        /// Średnia efektywność ścieżki BFS ograniczonej do odkryć algorytmu, tylko dla sukcesów.
+        /// </summary>
+        public double averageSuccessfulOptimizedPathEfficiency;
 
         /// <summary>
         /// Tworzy podsumowanie na podstawie listy metryk pojedynczych uruchomień algorytmu.
@@ -147,7 +157,13 @@ namespace Algorytm.Dane
 
                 successfulRunCount = successCount,
                 averageSuccessfulPathLength = successfulMetrics.Count > 0 ? successfulMetrics.Average(metric => metric.pathLength) : 0,
-                averageSuccessfulPathEfficiency = successfulMetrics.Count > 0 ? successfulMetrics.Average(metric => metric.pathEfficiency) : 0
+                averageSuccessfulPathEfficiency = successfulMetrics.Count > 0 ? successfulMetrics.Average(metric => metric.pathEfficiency) : 0,
+                averageSuccessfulOptimizedPathLength = successfulMetrics.Count > 0
+                    ? successfulMetrics.Average(metric => metric.optimizedDiscoveredPathLength)
+                    : 0,
+                averageSuccessfulOptimizedPathEfficiency = successfulMetrics.Count > 0
+                    ? successfulMetrics.Average(metric => metric.optimizedDiscoveredPathEfficiency)
+                    : 0
             };
         }
     }

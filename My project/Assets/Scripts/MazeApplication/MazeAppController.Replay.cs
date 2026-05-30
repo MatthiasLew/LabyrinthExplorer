@@ -69,9 +69,19 @@ public partial class MazeAppController
         Vector2Int? geneticMarker = null;
         Vector2Int? antMarker = null;
 
+        string noSuccessfulRun = currentLanguage == AppLanguage.Polski
+            ? "brak udanego przebiegu"
+            : "no successful run";
+        string geneticRunInfo = geneticMetrics != null
+            ? $"run {geneticMetrics.runIndex + 1}, seed {geneticMetrics.randomSeed}"
+            : noSuccessfulRun;
+        string antRunInfo = antMetrics != null
+            ? $"run {antMetrics.runIndex + 1}, seed {antMetrics.randomSeed}"
+            : noSuccessfulRun;
+
         UpdateInfo(currentLanguage == AppLanguage.Polski
-            ? "SYMULACJA WYSZUKIWANIA\nGenetyczny: niebieski = aktualnie najlepsze potomstwo, jasny ślad = poprzednie najlepsze. Mrówkowy: pomarańczowy ślad ciemnieje wraz z feromonem."
-            : "SEARCH REPLAY\nGenetic: blue = current best offspring, pale trail = former best. Ant Colony: orange trail becomes stronger with pheromone reinforcement.");
+            ? $"SYMULACJA NAJLEPSZYCH UDANYCH PRZEBIEGÓW\nGenetyczny: {geneticRunInfo}. Mrówkowy: {antRunInfo}.\nPomarańczowy kolor przedstawia ślad pokazywanych najlepszych mrówek, a nie dokładną mapę feromonów."
+            : $"BEST SUCCESSFUL RUN REPLAY\nGenetic: {geneticRunInfo}. Ant Colony: {antRunInfo}.\nOrange represents shown best-ant paths, not the exact internal pheromone map.");
 
         for (int segmentIndex = 0; segmentIndex < maximumSegmentCount; segmentIndex++)
         {
@@ -100,6 +110,7 @@ public partial class MazeAppController
                 ? antSegment.path.Count
                 : 0;
             int maximumPathLength = Mathf.Max(geneticPathLength, antPathLength);
+            int animationStride = Mathf.Max(1, Mathf.CeilToInt(maximumPathLength / 250f));
 
             for (int pathIndex = 0; pathIndex < maximumPathLength; pathIndex++)
             {
@@ -126,7 +137,10 @@ public partial class MazeAppController
                         antAgentMarkerColor);
                 }
 
-                yield return new WaitForSeconds(motionDelay);
+                if (pathIndex % animationStride == 0 || pathIndex == maximumPathLength - 1)
+                {
+                    yield return new WaitForSeconds(motionDelay);
+                }
             }
 
             ClearReplayMarker(algorithmAOptimalOverlayImages, ref geneticMarker);

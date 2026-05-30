@@ -17,6 +17,11 @@ namespace Algorytm.Dane
         public Vector2Int startPosition;
         public Vector2Int finishPosition;
         public int randomSeed;
+
+        // Hard safety limits make heuristic runs terminate predictably.
+        public int maxIterations = 500;
+        public double maxRuntimeMs = 10000d;
+
         public bool enableVisualization;
         public float stepDelaySeconds;
         public object mazeData;

@@ -24,14 +24,14 @@ public class MazeGenerator
         }
 
         int effectiveSeed = seed == 0 ? Environment.TickCount : seed;
-        var seedGenerator = new System.Random(effectiveSeed);
+        var seedGenerator = new global::System.Random(effectiveSeed);
 
         bool[,] bestMaze = null;
         int bestDistance = -1;
 
         for (int attempt = 0; attempt < CandidateCount; attempt++)
         {
-            var rng = new System.Random(seedGenerator.Next());
+            var rng = new global::System.Random(seedGenerator.Next());
             bool[,] candidate = GenerateCandidate(width, height, rng);
             AddExtraOpenings(candidate, rng);
 
@@ -51,7 +51,7 @@ public class MazeGenerator
         return bestMaze;
     }
 
-    private static bool[,] GenerateCandidate(int width, int height, System.Random rng)
+    private static bool[,] GenerateCandidate(int width, int height, global::System.Random rng)
     {
         var maze = new bool[width, height];
 
@@ -119,7 +119,7 @@ public class MazeGenerator
         return maze;
     }
 
-    private static void AddExtraOpenings(bool[,] maze, System.Random rng)
+    private static void AddExtraOpenings(bool[,] maze, global::System.Random rng)
     {
         int width = maze.GetLength(0);
         int height = maze.GetLength(1);
@@ -246,7 +246,7 @@ public class MazeGenerator
         return farthest;
     }
 
-    private static void Shuffle<T>(IList<T> items, System.Random rng)
+    private static void Shuffle<T>(IList<T> items, global::System.Random rng)
     {
         for (int i = items.Count - 1; i > 0; i--)
         {

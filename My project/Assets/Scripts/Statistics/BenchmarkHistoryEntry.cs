@@ -18,8 +18,14 @@ namespace Statistics
         public int randomSeed;
         public bool reachedGoal;
         public double totalRuntimeMs;
+        public double logicTimeMs;
+        // Surowy wynik algorytmu, bez prezentacyjnego BFS-u.
         public int pathLength;
         public float pathEfficiency;
+
+        // Trasa wyliczona po sukcesie z odkrytego podgrafu, tylko do dodatkowej analizy.
+        public int optimizedDiscoveredPathLength;
+        public float optimizedDiscoveredPathEfficiency;
         public long measurementUtcTicks;
 
         /// <summary>
@@ -46,8 +52,11 @@ namespace Statistics
                 randomSeed = metrics.randomSeed,
                 reachedGoal = metrics.reachedGoal,
                 totalRuntimeMs = metrics.totalRuntimeMs,
+                logicTimeMs = metrics.logicTimeMs,
                 pathLength = metrics.pathLength,
                 pathEfficiency = metrics.pathEfficiency,
+                optimizedDiscoveredPathLength = metrics.optimizedDiscoveredPathLength,
+                optimizedDiscoveredPathEfficiency = metrics.optimizedDiscoveredPathEfficiency,
                 measurementUtcTicks = DateTime.UtcNow.Ticks
             };
         }
@@ -63,6 +72,24 @@ namespace Statistics
             {
                 return "Unknown";
             }
+        }
+
+        public double GetComparableLogicTimeMs()
+        {
+            // Starsze wpisy historii nie mają logicTimeMs; w takim przypadku
+            // zachowujemy ich dotychczasowy czas całkowity jako przybliżenie.
+            return logicTimeMs > 0d ? logicTimeMs : totalRuntimeMs;
+        }
+
+        public string GetLogicTimeFormatted()
+        {
+            double value = GetComparableLogicTimeMs();
+            if (value < 1000)
+            {
+                return $"{value:F2} ms";
+            }
+
+            return $"{value / 1000.0:F2}s";
         }
 
         public string GetRuntimeFormatted()

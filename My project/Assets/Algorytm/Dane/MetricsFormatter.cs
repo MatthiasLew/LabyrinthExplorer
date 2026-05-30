@@ -36,12 +36,15 @@ namespace Algorytm.Dane
             stringBuilder.AppendLine($"StartPosition: {metrics.startPosition}");
             stringBuilder.AppendLine($"FinishPosition: {metrics.finishPosition}");
             stringBuilder.AppendLine($"ReachedGoal: {metrics.reachedGoal}");
-            stringBuilder.AppendLine($"FoundOptimalPath: {metrics.foundOptimalPath}");
+            stringBuilder.AppendLine($"FoundOptimalRawPath: {metrics.foundOptimalPath}");
+            stringBuilder.AppendLine($"FoundOptimalDiscoveredPath: {metrics.foundOptimalDiscoveredPath}");
             stringBuilder.AppendLine($"EndReason: {metrics.endReason}");
             stringBuilder.AppendLine($"StepsTaken: {metrics.stepsTaken}");
-            stringBuilder.AppendLine($"PathLength: {metrics.pathLength}");
+            stringBuilder.AppendLine($"RawPathLength: {metrics.pathLength}");
+            stringBuilder.AppendLine($"OptimizedDiscoveredPathLength: {metrics.optimizedDiscoveredPathLength}");
             stringBuilder.AppendLine($"ShortestPossiblePathLength: {metrics.shortestPossiblePathLength}");
-            stringBuilder.AppendLine($"PathEfficiency: {metrics.pathEfficiency:F3}");
+            stringBuilder.AppendLine($"RawPathEfficiency: {metrics.pathEfficiency:F3}");
+            stringBuilder.AppendLine($"OptimizedDiscoveredPathEfficiency: {metrics.optimizedDiscoveredPathEfficiency:F3}");
             stringBuilder.AppendLine($"VisitedCells: {metrics.visitedCells}");
             stringBuilder.AppendLine($"RevisitedCells: {metrics.revisitedCells}");
             stringBuilder.AppendLine($"BacktrackCount: {metrics.backtrackCount}");

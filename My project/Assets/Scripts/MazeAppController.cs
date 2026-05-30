@@ -33,6 +33,8 @@ public partial class MazeAppController : MonoBehaviour
     [SerializeField] private int mazeWidth = 10;
     [SerializeField] private int mazeHeight = 10;
     [SerializeField] private int runCount = 3;
+    [SerializeField] [Min(1)] private int maxAlgorithmIterations = 500;
+    [SerializeField] [Min(0.1f)] private float maxAlgorithmRuntimeSeconds = 10f;
     [SerializeField] private bool enableVisualization = false;
     [SerializeField] private float stepDelaySeconds = 0.02f;
 

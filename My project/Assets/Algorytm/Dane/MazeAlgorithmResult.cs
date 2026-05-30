@@ -27,9 +27,14 @@ namespace Algorytm.Dane
         public int stepsTaken;
 
         /// <summary>
-        /// Długość końcowej ścieżki zwróconej przez algorytm.
+        /// Długość surowej ścieżki, którą agent doprowadził do mety.
         /// </summary>
         public int pathLength;
+
+        /// <summary>
+        /// Długość trasy BFS ograniczonej do komórek odkrytych przez ten algorytm.
+        /// </summary>
+        public int optimizedDiscoveredPathLength;
 
         /// <summary>
         /// Długość najkrótszej możliwej ścieżki w danym labiryncie.
@@ -135,7 +140,12 @@ namespace Algorytm.Dane
         public List<AlgorithmReplaySegment> replaySegments = new();
 
         /// <summary>
-        /// Końcowa ścieżka znaleziona przez algorytm.
+        /// Surowa ścieżka agenta, który osiągnął cel.
+        /// </summary>
+        public List<Vector2Int> rawFinalPath = new();
+
+        /// <summary>
+        /// Trasa prezentowana po sukcesie: BFS ograniczony do odkryć algorytmu.
         /// </summary>
         public List<Vector2Int> finalPath = new();
         
@@ -151,6 +161,7 @@ namespace Algorytm.Dane
 
             metrics.stepsTaken = stepsTaken;
             metrics.pathLength = pathLength;
+            metrics.optimizedDiscoveredPathLength = optimizedDiscoveredPathLength;
             metrics.shortestPossiblePathLength = shortestPossiblePathLength;
 
             metrics.visitedCells = visitedCells;
@@ -188,6 +199,10 @@ namespace Algorytm.Dane
                 }
             }
             
+            metrics.rawFinalPath = rawFinalPath != null
+                ? new List<Vector2Int>(rawFinalPath)
+                : new List<Vector2Int>();
+
             metrics.finalPath = finalPath != null
                 ? new List<Vector2Int>(finalPath)
                 : new List<Vector2Int>();

@@ -12,7 +12,7 @@ namespace Statistics
     {
         private readonly string historyFilePath;
 
-        public BenchmarkHistoryStore(string fileName = "benchmark_history.json")
+        public BenchmarkHistoryStore(string fileName = "benchmark_history_v2.json")
         {
             string persistentPath = Application.persistentDataPath;
             historyFilePath = Path.Combine(persistentPath, fileName);

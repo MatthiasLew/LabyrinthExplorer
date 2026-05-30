@@ -130,9 +130,25 @@ namespace Algorytm.Dane
         public int stepsTaken;
 
         /// <summary>
-        /// Długość odnalezionej ścieżki.
+        /// Długość surowej ścieżki, którą sam algorytm doprowadził do mety.
         /// </summary>
         public int pathLength;
+
+        /// <summary>
+        /// Długość ścieżki wygładzonej BFS-em wyłącznie w podgrafie odkrytym przez algorytm.
+        /// Wartość prezentacyjna; nie zastępuje surowego wyniku algorytmu.
+        /// </summary>
+        public int optimizedDiscoveredPathLength;
+
+        /// <summary>
+        /// Efektywność ścieżki wygładzonej BFS-em po odkryciach algorytmu.
+        /// </summary>
+        public float optimizedDiscoveredPathEfficiency;
+
+        /// <summary>
+        /// Czy BFS po odkrytych komórkach uzyskał globalne minimum labiryntu.
+        /// </summary>
+        public bool foundOptimalDiscoveredPath;
 
         /// <summary>
         /// Długość najkrótszej możliwej ścieżki w danym labiryncie.
@@ -343,6 +359,20 @@ namespace Algorytm.Dane
                                shortestPossiblePathLength > 0 &&
                                pathLength == shortestPossiblePathLength;
 
+            if (reachedGoal && shortestPossiblePathLength > 0 && optimizedDiscoveredPathLength > 0)
+            {
+                optimizedDiscoveredPathEfficiency =
+                    Mathf.Clamp01((float)shortestPossiblePathLength / optimizedDiscoveredPathLength);
+            }
+            else
+            {
+                optimizedDiscoveredPathEfficiency = 0f;
+            }
+
+            foundOptimalDiscoveredPath = reachedGoal &&
+                                         shortestPossiblePathLength > 0 &&
+                                         optimizedDiscoveredPathLength == shortestPossiblePathLength;
+
             managedMemoryDeltaBytes = managedMemoryAfterBytes - managedMemoryBeforeBytes;
             processMemoryDeltaBytes = processMemoryAfterBytes - processMemoryBeforeBytes;
         }
@@ -360,8 +390,12 @@ namespace Algorytm.Dane
         public List<AlgorithmReplaySegment> replaySegments = new();
 
         /// <summary>
-        /// Końcowa ścieżka zwrócona przez algorytm.
-        /// Używana do wizualizacji wyniku po odtworzeniu eksploracji.
+        /// Surowa trasa udanego agenta przed optymalizacją prezentacyjną.
+        /// </summary>
+        public List<Vector2Int> rawFinalPath = new();
+
+        /// <summary>
+        /// Trasa prezentowana na planszy po sukcesie: BFS po komórkach odkrytych przez algorytm.
         /// </summary>
         public List<Vector2Int> finalPath = new();
     }

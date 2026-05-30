@@ -78,6 +78,8 @@ public partial class MazeAppController
             startPosition = startPosition,
             finishPosition = finishPosition,
             randomSeed = seedToUse,
+            maxIterations = maxAlgorithmIterations > 0 ? maxAlgorithmIterations : 500,
+            maxRuntimeMs = maxAlgorithmRuntimeSeconds > 0f ? maxAlgorithmRuntimeSeconds * 1000d : 10000d,
             enableVisualization = false,
             stepDelaySeconds = 0f,
             mazeData = currentMaze,
@@ -246,10 +248,13 @@ public partial class MazeAppController
         lastComparisonResult = result;
 
         int optimalLength = currentMaze.GetShortestPathLength(startPosition, finishPosition);
+        bool anySuccessfulPath =
+            result.firstAlgorithmSummary.successfulRunCount > 0 ||
+            result.secondAlgorithmSummary.successfulRunCount > 0;
         string betterPathText = string.IsNullOrWhiteSpace(result.betterPathAlgorithmName)
-            ? (currentLanguage == AppLanguage.Polski
-                ? "brak poprawnych rozwiązań"
-                : "no successful solutions")
+            ? (anySuccessfulPath
+                ? (currentLanguage == AppLanguage.Polski ? "remis" : "tie")
+                : (currentLanguage == AppLanguage.Polski ? "brak poprawnych rozwiązań" : "no successful solutions"))
             : ShortAlgorithmName(result.betterPathAlgorithmName);
 
         string reliabilityText = Mathf.Approximately(
@@ -257,6 +262,9 @@ public partial class MazeAppController
             result.secondAlgorithmSummary.successRate)
                 ? (currentLanguage == AppLanguage.Polski ? "remis" : "tie")
                 : ShortAlgorithmName(result.moreReliableAlgorithmName);
+        string speedText = string.IsNullOrWhiteSpace(result.fasterAlgorithmName)
+            ? (currentLanguage == AppLanguage.Polski ? "remis" : "tie")
+            : ShortAlgorithmName(result.fasterAlgorithmName);
 
         if (wynikAText != null)
         {
@@ -283,20 +291,20 @@ public partial class MazeAppController
             UpdateInfo(
                 $"BENCHMARK — {GetActiveMazeDisplayName()} ({currentMaze.Width}x{currentMaze.Height})\n" +
                 $"Próby: {result.firstAlgorithmSummary.runCount} | Kontrolne minimum całej mapy: {optimalLength}\n" +
-                $"Szybszy: {ShortAlgorithmName(result.fasterAlgorithmName)} | " +
+                $"Szybszy: {speedText} | " +
                 $"Niezawodny: {reliabilityText} | " +
                 $"Lepsza ścieżka: {betterPathText}\n" +
-                "Legenda: niebieski/jasnoniebieski = kolejne najlepsze potomstwa, pomarańczowy = feromon mrówek, fioletowy środek = BFS po sukcesie");
+                "Legenda: niebieski/jasnoniebieski = kolejne najlepsze potomstwa, pomarańczowy = ślad pokazywanych mrówek, fioletowy środek = BFS po sukcesie");
         }
         else
         {
             UpdateInfo(
                 $"BENCHMARK — {GetActiveMazeDisplayName()} ({currentMaze.Width}x{currentMaze.Height})\n" +
                 $"Runs: {result.firstAlgorithmSummary.runCount} | Full-maze control minimum: {optimalLength}\n" +
-                $"Faster: {ShortAlgorithmName(result.fasterAlgorithmName)} | " +
+                $"Faster: {speedText} | " +
                 $"Reliable: {reliabilityText} | " +
                 $"Better path: {betterPathText}\n" +
-                "Legend: blue/pale blue = successive best offspring, orange = ant pheromone trail, violet centre = post-success BFS");
+                "Legend: blue/pale blue = successive best offspring, orange = shown ant paths, violet centre = post-success BFS");
         }
 
         EnsureComparisonAreaLayout();
@@ -320,8 +328,10 @@ public partial class MazeAppController
             : $"Success rate: {summary.successCount}/{summary.runCount} ({summary.successRate:P0})";
 
         string timeText = language == AppLanguage.Polski
-            ? $"Średni czas: {summary.averageTotalRuntimeMs:F2} ms"
-            : $"Average time: {summary.averageTotalRuntimeMs:F2} ms";
+            ? $"Średni czas logiki: {summary.averageLogicTimeMs:F2} ms\n" +
+              $"Średni czas przebiegu: {summary.averageTotalRuntimeMs:F2} ms"
+            : $"Average logic time: {summary.averageLogicTimeMs:F2} ms\n" +
+              $"Average run wall time: {summary.averageTotalRuntimeMs:F2} ms";
 
         string pathLengthText;
         string pathEfficiencyText;
@@ -329,12 +339,16 @@ public partial class MazeAppController
         if (summary.successfulRunCount > 0)
         {
             pathLengthText = language == AppLanguage.Polski
-                ? $"Średnia trasa BFS z odkryć algorytmu: {summary.averageSuccessfulPathLength:F2}"
-                : $"Average BFS path within discovered cells: {summary.averageSuccessfulPathLength:F2}";
+                ? $"Średnia surowa trasa algorytmu: {summary.averageSuccessfulPathLength:F2}\n" +
+                  $"Średnia trasa BFS z odkryć: {summary.averageSuccessfulOptimizedPathLength:F2}"
+                : $"Average raw algorithm route: {summary.averageSuccessfulPathLength:F2}\n" +
+                  $"Average BFS route within discoveries: {summary.averageSuccessfulOptimizedPathLength:F2}";
 
             pathEfficiencyText = language == AppLanguage.Polski
-                ? $"Średnia efektywność (udane): {summary.averageSuccessfulPathEfficiency:F2}"
-                : $"Average efficiency (successful): {summary.averageSuccessfulPathEfficiency:F2}";
+                ? $"Efektywność surowej trasy: {summary.averageSuccessfulPathEfficiency:F2}\n" +
+                  $"Efektywność po BFS z odkryć: {summary.averageSuccessfulOptimizedPathEfficiency:F2}"
+                : $"Raw route efficiency: {summary.averageSuccessfulPathEfficiency:F2}\n" +
+                  $"Efficiency after discovery-only BFS: {summary.averageSuccessfulOptimizedPathEfficiency:F2}";
         }
         else
         {

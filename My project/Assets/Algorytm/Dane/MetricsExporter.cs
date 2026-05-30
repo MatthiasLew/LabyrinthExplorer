@@ -68,8 +68,9 @@ namespace Algorytm.Dane
 
             stringBuilder.AppendLine(
                 "AlgorithmName,AlgorithmVersion,TestId,RunIndex,RandomSeed,MazeName,MazeType,MazeWidth,MazeHeight,TotalCells," +
-                "StartPosition,FinishPosition,ReachedGoal,FoundOptimalPath,StepsTaken,PathLength,ShortestPossiblePathLength," +
-                "PathEfficiency,VisitedCells,RevisitedCells,BacktrackCount,WallHits,DeadEndsEncountered,ExpandedNodes," +
+                "StartPosition,FinishPosition,ReachedGoal,FoundOptimalPath,FoundOptimalDiscoveredPath,StepsTaken,RawPathLength," +
+                "OptimizedDiscoveredPathLength,ShortestPossiblePathLength,RawPathEfficiency,OptimizedDiscoveredPathEfficiency," +
+                "VisitedCells,RevisitedCells,BacktrackCount,WallHits,DeadEndsEncountered,ExpandedNodes," +
                 "ValidMovesConsidered,InvalidMovesConsidered,FrontierMaxSize,Iterations,Generations,RestartCount," +
                 "StagnationIterations,BestFitness,AverageFitness,LogicTimeMs,VisualizationTimeMs,TotalRuntimeMs," +
                 "AverageIterationTimeMs,MaxIterationTimeMs,ManagedMemoryBeforeBytes,ManagedMemoryAfterBytes," +
@@ -94,10 +95,13 @@ namespace Algorytm.Dane
                     Escape(metrics.finishPosition.ToString()),
                     Format(metrics.reachedGoal),
                     Format(metrics.foundOptimalPath),
+                    Format(metrics.foundOptimalDiscoveredPath),
                     Format(metrics.stepsTaken),
                     Format(metrics.pathLength),
+                    Format(metrics.optimizedDiscoveredPathLength),
                     Format(metrics.shortestPossiblePathLength),
                     Format(metrics.pathEfficiency),
+                    Format(metrics.optimizedDiscoveredPathEfficiency),
                     Format(metrics.visitedCells),
                     Format(metrics.revisitedCells),
                     Format(metrics.backtrackCount),

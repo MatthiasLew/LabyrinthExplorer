@@ -78,13 +78,18 @@ namespace Algorytm.Genetyczny
         /// </summary>
         /// <param name="length">Liczba genów w chromosomie.</param>
         /// <returns>Nowy losowo zainicjalizowany chromosom.</returns>
-        public static Chromosome CreateRandom(int length)
+        public static Chromosome CreateRandom(int length, global::System.Random rng)
         {
+            if (rng == null)
+            {
+                throw new ArgumentNullException(nameof(rng));
+            }
+
             var chromosome = new Chromosome(length);
 
             for (int i = 0; i < chromosome.Genes.Length; i++)
             {
-                chromosome.Genes[i] = (MoveDirection)UnityEngine.Random.Range(0, 4);
+                chromosome.Genes[i] = (MoveDirection)rng.Next(0, 4);
             }
 
             return chromosome;
