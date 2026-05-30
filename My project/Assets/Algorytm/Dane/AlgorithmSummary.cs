@@ -81,6 +81,21 @@ namespace Algorytm.Dane
         public float averageFps;
 
         /// <summary>
+        /// Liczba udanych uruchomień (gdzie reachedGoal == true).
+        /// </summary>
+        public int successfulRunCount;
+
+        /// <summary>
+        /// Średnia długość ścieżki obliczona tylko dla udanych uruchomień.
+        /// </summary>
+        public double averageSuccessfulPathLength;
+
+        /// <summary>
+        /// Średnia efektywność ścieżki obliczona tylko dla udanych uruchomień.
+        /// </summary>
+        public double averageSuccessfulPathEfficiency;
+
+        /// <summary>
         /// Tworzy podsumowanie na podstawie listy metryk pojedynczych uruchomień algorytmu.
         /// </summary>
         /// <param name="metricsList">Lista metryk do zagregowania.</param>
@@ -107,6 +122,7 @@ namespace Algorytm.Dane
 
             int runCount = metricsList.Count;
             int successCount = metricsList.Count(metric => metric.reachedGoal);
+            var successfulMetrics = metricsList.Where(metric => metric.reachedGoal).ToList();
 
             return new AlgorithmSummary
             {
@@ -127,7 +143,11 @@ namespace Algorytm.Dane
                 averageVisitedCells = metricsList.Average(metric => metric.visitedCells),
                 averagePathEfficiency = metricsList.Average(metric => metric.pathEfficiency),
 
-                averageFps = metricsList.Average(metric => metric.averageFps)
+                averageFps = metricsList.Average(metric => metric.averageFps),
+
+                successfulRunCount = successCount,
+                averageSuccessfulPathLength = successfulMetrics.Count > 0 ? successfulMetrics.Average(metric => metric.pathLength) : 0,
+                averageSuccessfulPathEfficiency = successfulMetrics.Count > 0 ? successfulMetrics.Average(metric => metric.pathEfficiency) : 0
             };
         }
     }

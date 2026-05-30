@@ -59,6 +59,28 @@ namespace Algorytm.Dane
                 throw new ArgumentNullException(nameof(secondAlgorithmSummary));
             }
 
+            // Jakość ścieżki porównujemy wyłącznie dla przebiegów, które dotarły do mety.
+            // Pusty tekst oznacza, że żaden algorytm nie znalazł poprawnego rozwiązania.
+            string betterPathAlgorithmName = string.Empty;
+
+            if (firstAlgorithmSummary.successfulRunCount > 0 &&
+                secondAlgorithmSummary.successfulRunCount > 0)
+            {
+                betterPathAlgorithmName =
+                    firstAlgorithmSummary.averageSuccessfulPathEfficiency >=
+                    secondAlgorithmSummary.averageSuccessfulPathEfficiency
+                        ? firstAlgorithmSummary.algorithmName
+                        : secondAlgorithmSummary.algorithmName;
+            }
+            else if (firstAlgorithmSummary.successfulRunCount > 0)
+            {
+                betterPathAlgorithmName = firstAlgorithmSummary.algorithmName;
+            }
+            else if (secondAlgorithmSummary.successfulRunCount > 0)
+            {
+                betterPathAlgorithmName = secondAlgorithmSummary.algorithmName;
+            }
+
             return new AlgorithmComparisonResult
             {
                 firstAlgorithmSummary = firstAlgorithmSummary,
@@ -71,10 +93,7 @@ namespace Algorytm.Dane
                     firstAlgorithmSummary.successRate >= secondAlgorithmSummary.successRate
                         ? firstAlgorithmSummary.algorithmName
                         : secondAlgorithmSummary.algorithmName,
-                betterPathAlgorithmName =
-                    firstAlgorithmSummary.averagePathEfficiency >= secondAlgorithmSummary.averagePathEfficiency
-                        ? firstAlgorithmSummary.algorithmName
-                        : secondAlgorithmSummary.algorithmName
+                betterPathAlgorithmName = betterPathAlgorithmName
             };
         }
     }

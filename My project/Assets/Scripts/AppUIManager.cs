@@ -1,3 +1,4 @@
+using Statistics;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -19,6 +20,9 @@ public class AppUIManager : MonoBehaviour
     [SerializeField] private GameObject mapEditorPanel;
     [SerializeField] private GameObject statsPanel;
     [SerializeField] private GameObject settingsPanel;
+
+    [Header("Statistics")]
+    [SerializeField] private StatsPanelController statsPanelController;
 
     private void Start()
     {
@@ -66,7 +70,11 @@ public class AppUIManager : MonoBehaviour
                 break;
 
             case PanelType.Stats:
-                if (statsPanel != null) statsPanel.SetActive(true);
+                if (statsPanel != null)
+                {
+                    statsPanel.SetActive(true);
+                    RefreshStatsPanel();
+                }
                 break;
 
             case PanelType.Settings:
@@ -97,5 +105,57 @@ public class AppUIManager : MonoBehaviour
     {
         panelToOpen = PanelType.Settings;
         OpenPanel(PanelType.Settings);
+    }
+
+    private void RefreshStatsPanel()
+    {
+        if (statsPanel == null)
+        {
+            return;
+        }
+
+        if (statsPanelController == null)
+        {
+            statsPanelController = statsPanel.GetComponent<StatsPanelController>();
+
+            if (statsPanelController == null)
+            {
+                statsPanelController = statsPanel.AddComponent<StatsPanelController>();
+            }
+        }
+
+        RectTransform resultsPanel = FindChildByName(statsPanel.transform, "ResultsPanel") as RectTransform;
+        if (resultsPanel == null)
+        {
+            Debug.LogError("Nie znaleziono obiektu ResultsPanel w panelu Wyniki Pomiarów.");
+            return;
+        }
+
+        statsPanelController.Initialize(resultsPanel);
+        statsPanelController.RefreshDisplay();
+    }
+
+    private static Transform FindChildByName(Transform root, string objectName)
+    {
+        if (root == null)
+        {
+            return null;
+        }
+
+        if (root.name == objectName)
+        {
+            return root;
+        }
+
+        for (int i = 0; i < root.childCount; i++)
+        {
+            Transform found = FindChildByName(root.GetChild(i), objectName);
+            if (found != null)
+            {
+                return found;
+            }
+        }
+
+        return null;
     }
 }

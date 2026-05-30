@@ -27,7 +27,7 @@ namespace Algorytm.Mrówkowy
 
         private const int AntCount = 40;
         private const int MaxIterations = 150;
-        private const int MaxStepsPerAnt = 200;
+        private const int MinimumStepBudget = 128;
         private const int MaxStagnationIterations = 25;
 
         private const float Alpha = 1.0f;
@@ -88,6 +88,15 @@ namespace Algorytm.Mrówkowy
                 yield break;
             }
 
+            int shortestPathLength = maze.GetShortestPathLength(
+                context.startPosition,
+                context.finishPosition);
+
+            int moveBudget = Mathf.Clamp(
+                Mathf.Max(MinimumStepBudget, shortestPathLength * 2),
+                MinimumStepBudget,
+                Mathf.Max(MinimumStepBudget, maze.Width * maze.Height * 2));
+
             Random.InitState(context.randomSeed);
 
             float[,] pheromones = CreateInitialPheromoneMap(maze);
@@ -123,7 +132,8 @@ namespace Algorytm.Mrówkowy
                         ref deadEnds,
                         ref validMoves,
                         ref invalidMoves,
-                        context.enableVisualization ? context.onVisualizationStep : null);
+                        context.enableVisualization ? context.onVisualizationStep : null,
+                        moveBudget);
 
                     ants.Add(ant);
                 }
@@ -338,7 +348,8 @@ namespace Algorytm.Mrówkowy
             ref int deadEnds,
             ref int validMoves,
             ref int invalidMoves,
-            Action<Vector2Int> onVisualizationStep)
+            Action<Vector2Int> onVisualizationStep,
+            int maxSteps)
         {
             var ant = new AntRunData();
             var localVisited = new HashSet<Vector2Int>();
@@ -352,7 +363,7 @@ namespace Algorytm.Mrówkowy
             int initialDistance = maze.GetManhattanDistance(start, finish);
             int bestDistance = initialDistance;
 
-            for (int stepIndex = 0; stepIndex < MaxStepsPerAnt; stepIndex++)
+            for (int stepIndex = 0; stepIndex < maxSteps; stepIndex++)
             {
                 List<Vector2Int> neighbors = maze
                     .GetNeighbors(current)

@@ -27,7 +27,7 @@ namespace Algorytm.Genetyczny
         private const int PopulationSize = 50;
         private const int MaxGenerations = 200;
         private const float MutationChance = 0.08f;
-        private const int ChromosomeLength = 128;
+        private const int MinimumChromosomeLength = 128;
         private const int TournamentSize = 3;
         private const int MaxStagnationGenerations = 30;
 
@@ -82,6 +82,15 @@ namespace Algorytm.Genetyczny
                 yield break;
             }
 
+            int shortestPathLength = maze.GetShortestPathLength(
+                context.startPosition,
+                context.finishPosition);
+
+            int moveBudget = Mathf.Clamp(
+                Mathf.Max(MinimumChromosomeLength, shortestPathLength * 2),
+                MinimumChromosomeLength,
+                Mathf.Max(MinimumChromosomeLength, maze.Width * maze.Height * 2));
+
             Random.InitState(context.randomSeed);
 
             var globallyVisited = new HashSet<Vector2Int>();
@@ -93,7 +102,7 @@ namespace Algorytm.Genetyczny
             int invalidMoves = 0;
             int bestGenerationIndex = -1;
 
-            List<Chromosome> population = CreateInitialPopulation();
+            List<Chromosome> population = CreateInitialPopulation(moveBudget);
 
             float bestFitnessEver = float.MinValue;
             Chromosome bestChromosomeEver = null;
@@ -174,7 +183,7 @@ namespace Algorytm.Genetyczny
                 if (stagnationCounter >= MaxStagnationGenerations)
                 {
                     result.restartCount++;
-                    population = CreateInitialPopulation();
+                    population = CreateInitialPopulation(moveBudget);
                     stagnationCounter = 0;
 
                     profiler.EndIteration();
@@ -267,13 +276,13 @@ namespace Algorytm.Genetyczny
         /// Tworzy początkową populację losowych chromosomów.
         /// </summary>
         /// <returns>Lista chromosomów o rozmiarze równym konfiguracji populacji.</returns>
-        private static List<Chromosome> CreateInitialPopulation()
+        private static List<Chromosome> CreateInitialPopulation(int chromosomeLength)
         {
             var population = new List<Chromosome>(PopulationSize);
 
             for (int i = 0; i < PopulationSize; i++)
             {
-                population.Add(Chromosome.CreateRandom(ChromosomeLength));
+                population.Add(Chromosome.CreateRandom(chromosomeLength));
             }
 
             return population;
@@ -477,7 +486,7 @@ namespace Algorytm.Genetyczny
         {
             result.reachedGoal = chromosome.ReachedGoal;
             result.stepsTaken = chromosome.StepsTaken;
-            result.pathLength = chromosome.Path.Count;
+            result.pathLength = Mathf.Max(0, chromosome.Path.Count - 1);
             result.shortestPossiblePathLength = maze.GetShortestPathLength(
                 context.startPosition,
                 context.finishPosition);
