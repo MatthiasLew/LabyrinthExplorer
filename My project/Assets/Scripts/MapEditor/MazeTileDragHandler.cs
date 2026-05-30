@@ -1,6 +1,7 @@
 using System;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
 
 /// <summary>
 /// Przekazuje do MazeAppController zdarzenia malowania kafelków myszką.
@@ -45,7 +46,7 @@ public class MazeTileDragHandler : MonoBehaviour,
 
     public void OnPointerEnter(PointerEventData eventData)
     {
-        if (!globalDragActive || !Input.GetMouseButton(0))
+        if (!globalDragActive || Mouse.current == null || !Mouse.current.leftButton.isPressed)
         {
             return;
         }
