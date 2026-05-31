@@ -33,7 +33,9 @@ public partial class MazeAppController : MonoBehaviour
     [SerializeField] private int mazeWidth = 10;
     [SerializeField] private int mazeHeight = 10;
     [SerializeField] private int runCount = 3;
+    [SerializeField] private BenchmarkObjective benchmarkObjective = BenchmarkObjective.OptimizePathWithinBudget;
     [SerializeField] [Min(1)] private int maxAlgorithmIterations = 500;
+    [SerializeField] [Min(1)] private int maxCandidateEvaluations = 20000;
     [SerializeField] [Min(0.1f)] private float maxAlgorithmRuntimeSeconds = 10f;
     [SerializeField] private bool enableVisualization = false;
     [SerializeField] private float stepDelaySeconds = 0.02f;
@@ -45,8 +47,8 @@ public partial class MazeAppController : MonoBehaviour
     [SerializeField] private RectTransform editorGrid;
 
     [Header("Map Editor Limits")]
-    [SerializeField] [Min(2)] private int minMazeSize = 2;
-    [SerializeField] [Min(2)] private int maxMazeSize = 40;
+    [SerializeField] [Min(3)] private int minMazeSize = 3;
+    [SerializeField] [Min(3)] private int maxMazeSize = 40;
 
     [Header("Random Maze")]
     [SerializeField] [Range(0f, 0.9f)] private float randomWallChance = 0.30f;
@@ -112,6 +114,7 @@ public partial class MazeAppController : MonoBehaviour
     private const float UiReferenceWidth = 2560f;
     private const float UiReferenceHeight = 1440f;
     private const float UiMatchWidthHeight = 0.5f;
+    private const int ComparableCandidateBudgetStep = 200; // LCM of GA population 50 and ACO colony 40
 
     private enum EditorTool
     {
@@ -190,6 +193,8 @@ public partial class MazeAppController : MonoBehaviour
     private int selectedResolutionIndex = 2;
     private bool isFullscreen = false;
     private string currentMazeName = string.Empty;
+    private string currentMazeSource = "ManualOrEdited";
+    private int currentMazeSeed = 0;
 
     private enum VisualizationTarget
     {
@@ -217,6 +222,8 @@ public partial class MazeAppController : MonoBehaviour
         public int finishX;
         public int finishY;
         public bool[] walkableCells;
+        public string mazeSource;
+        public int mazeSeed;
         public string savedUtc;
     }
 

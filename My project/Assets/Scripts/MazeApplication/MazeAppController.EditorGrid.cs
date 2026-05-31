@@ -178,6 +178,7 @@ public partial class MazeAppController
         }
 
         currentMaze.SetWalkable(position, shouldBeWalkable);
+        MarkCurrentMazeAsEdited();
         RefreshTile(position);
         RebuildRunnerGrids();
         InvalidateDisplayedBenchmark();
@@ -197,6 +198,7 @@ public partial class MazeAppController
         }
 
         currentMaze.SetWalkable(position, shouldBeWalkable);
+        MarkCurrentMazeAsEdited();
         RefreshTile(position);
         return true;
     }
@@ -221,6 +223,7 @@ public partial class MazeAppController
             previousMarker = startPosition;
             startPosition = position;
             currentMaze.SetWalkable(position, true);
+            MarkCurrentMazeAsEdited();
             placeStartNext = false;
 
             RefreshTile(previousMarker);
@@ -241,6 +244,7 @@ public partial class MazeAppController
         previousMarker = finishPosition;
         finishPosition = position;
         currentMaze.SetWalkable(position, true);
+        MarkCurrentMazeAsEdited();
         placeStartNext = true;
 
         RefreshTile(previousMarker);

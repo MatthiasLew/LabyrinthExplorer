@@ -59,6 +59,10 @@ public partial class MazeAppController
         }
 
         int seedToUse = randomSeed == 0 ? Environment.TickCount : randomSeed;
+        int requestedCandidateBudget = maxCandidateEvaluations > 0 ? maxCandidateEvaluations : 20000;
+        int candidateBudgetToUse = Mathf.Max(
+            ComparableCandidateBudgetStep,
+            (requestedCandidateBudget / ComparableCandidateBudgetStep) * ComparableCandidateBudgetStep);
 
         if (pathReplayCoroutine != null)
         {
@@ -72,13 +76,17 @@ public partial class MazeAppController
         var context = new MazeAlgorithmContext
         {
             mazeName = GetActiveMazeDisplayName(),
-            mazeType = "Manual / MapEditor",
+            mazeType = currentMazeSource,
+            mazeSeed = currentMazeSeed,
+            mazeLayoutHash = currentMaze.GetLayoutHash(),
             mazeWidth = currentMaze.Width,
             mazeHeight = currentMaze.Height,
             startPosition = startPosition,
             finishPosition = finishPosition,
             randomSeed = seedToUse,
+            objective = benchmarkObjective,
             maxIterations = maxAlgorithmIterations > 0 ? maxAlgorithmIterations : 500,
+            maxCandidateEvaluations = candidateBudgetToUse,
             maxRuntimeMs = maxAlgorithmRuntimeSeconds > 0f ? maxAlgorithmRuntimeSeconds * 1000d : 10000d,
             enableVisualization = false,
             stepDelaySeconds = 0f,
@@ -265,6 +273,12 @@ public partial class MazeAppController
         string speedText = string.IsNullOrWhiteSpace(result.fasterAlgorithmName)
             ? (currentLanguage == AppLanguage.Polski ? "remis" : "tie")
             : ShortAlgorithmName(result.fasterAlgorithmName);
+        string objectiveTextPl = benchmarkObjective == BenchmarkObjective.OptimizePathWithinBudget
+            ? "optymalizacja trasy przy równym budżecie kandydatów"
+            : "czas do pierwszego poprawnego rozwiązania";
+        string objectiveTextEn = benchmarkObjective == BenchmarkObjective.OptimizePathWithinBudget
+            ? "optimize route under equal candidate budget"
+            : "time to first valid solution";
 
         if (wynikAText != null)
         {
@@ -291,20 +305,22 @@ public partial class MazeAppController
             UpdateInfo(
                 $"BENCHMARK — {GetActiveMazeDisplayName()} ({currentMaze.Width}x{currentMaze.Height})\n" +
                 $"Próby: {result.firstAlgorithmSummary.runCount} | Kontrolne minimum całej mapy: {optimalLength}\n" +
+                $"Cel: {objectiveTextPl} | Hash mapy: {currentMaze.GetLayoutHash()}\n" +
                 $"Szybszy: {speedText} | " +
                 $"Niezawodny: {reliabilityText} | " +
-                $"Lepsza ścieżka: {betterPathText}\n" +
-                "Legenda: niebieski/jasnoniebieski = kolejne najlepsze potomstwa, pomarańczowy = ślad pokazywanych mrówek, fioletowy środek = BFS po sukcesie");
+                $"Lepsza surowa ścieżka: {betterPathText}\n" +
+                "Legenda: niebieski = próby GA, pomarańczowy = próby ACO, fioletowy = BFS po wszystkich polach odwiedzonych przez dany algorytm");
         }
         else
         {
             UpdateInfo(
                 $"BENCHMARK — {GetActiveMazeDisplayName()} ({currentMaze.Width}x{currentMaze.Height})\n" +
                 $"Runs: {result.firstAlgorithmSummary.runCount} | Full-maze control minimum: {optimalLength}\n" +
+                $"Objective: {objectiveTextEn} | Maze hash: {currentMaze.GetLayoutHash()}\n" +
                 $"Faster: {speedText} | " +
                 $"Reliable: {reliabilityText} | " +
-                $"Better path: {betterPathText}\n" +
-                "Legend: blue/pale blue = successive best offspring, orange = shown ant paths, violet centre = post-success BFS");
+                $"Better raw path: {betterPathText}\n" +
+                "Legend: blue = GA attempts, orange = ACO attempts, violet = BFS over all cells visited by that algorithm");
         }
 
         EnsureComparisonAreaLayout();
@@ -340,15 +356,15 @@ public partial class MazeAppController
         {
             pathLengthText = language == AppLanguage.Polski
                 ? $"Średnia surowa trasa algorytmu: {summary.averageSuccessfulPathLength:F2}\n" +
-                  $"Średnia trasa BFS z odkryć: {summary.averageSuccessfulOptimizedPathLength:F2}"
+                  $"Średnia trasa BFS po wszystkich odkryciach: {summary.averageSuccessfulOptimizedPathLength:F2}"
                 : $"Average raw algorithm route: {summary.averageSuccessfulPathLength:F2}\n" +
-                  $"Average BFS route within discoveries: {summary.averageSuccessfulOptimizedPathLength:F2}";
+                  $"Average BFS route over all discoveries: {summary.averageSuccessfulOptimizedPathLength:F2}";
 
             pathEfficiencyText = language == AppLanguage.Polski
                 ? $"Efektywność surowej trasy: {summary.averageSuccessfulPathEfficiency:F2}\n" +
-                  $"Efektywność po BFS z odkryć: {summary.averageSuccessfulOptimizedPathEfficiency:F2}"
+                  $"Optymalne surowe trasy: {summary.optimalRawPathCount}/{summary.successfulRunCount}"
                 : $"Raw route efficiency: {summary.averageSuccessfulPathEfficiency:F2}\n" +
-                  $"Efficiency after discovery-only BFS: {summary.averageSuccessfulOptimizedPathEfficiency:F2}";
+                  $"Globally optimal raw routes: {summary.optimalRawPathCount}/{summary.successfulRunCount}";
         }
         else
         {
@@ -357,8 +373,8 @@ public partial class MazeAppController
         }
 
         string visitedText = language == AppLanguage.Polski
-            ? $"Średnia liczba odwiedzonych pól: {summary.averageVisitedCells:F1}"
-            : $"Average visited cells: {summary.averageVisitedCells:F1}";
+            ? $"Ocenione trasy: {summary.averageCandidateEvaluations:F0} | Śr. odwiedzone pola: {summary.averageVisitedCells:F1}"
+            : $"Evaluated routes: {summary.averageCandidateEvaluations:F0} | Avg. visited cells: {summary.averageVisitedCells:F1}";
 
         string result = $"{title}\n" +
                         $"{successText}\n" +

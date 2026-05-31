@@ -42,6 +42,34 @@ namespace Algorytm.Dane
         public int shortestPossiblePathLength;
 
         /// <summary>
+        /// Number of evaluated candidate routes (chromosomes or ants).
+        /// This is the comparable work budget across different heuristics.
+        /// </summary>
+        public int candidateEvaluations;
+
+        /// <summary>
+        /// First iteration/generation in which any valid route was found.
+        /// Zero means that no route was found.
+        /// </summary>
+        public int firstSuccessIteration;
+
+        /// <summary>
+        /// Candidate evaluation count at the moment of first success.
+        /// </summary>
+        public int firstSuccessCandidateEvaluation;
+
+        /// <summary>
+        /// Iteration/generation that produced the best retained raw route.
+        /// </summary>
+        public int bestSolutionIteration;
+
+        /// <summary>
+        /// Manhattan distance to the target for the best unsuccessful attempt.
+        /// Zero for successful results.
+        /// </summary>
+        public int bestDistanceToGoal;
+
+        /// <summary>
         /// Liczba unikalnych odwiedzonych komórek.
         /// </summary>
         public int visitedCells;
@@ -163,6 +191,11 @@ namespace Algorytm.Dane
             metrics.pathLength = pathLength;
             metrics.optimizedDiscoveredPathLength = optimizedDiscoveredPathLength;
             metrics.shortestPossiblePathLength = shortestPossiblePathLength;
+            metrics.candidateEvaluations = candidateEvaluations;
+            metrics.firstSuccessIteration = firstSuccessIteration;
+            metrics.firstSuccessCandidateEvaluation = firstSuccessCandidateEvaluation;
+            metrics.bestSolutionIteration = bestSolutionIteration;
+            metrics.bestDistanceToGoal = bestDistanceToGoal;
 
             metrics.visitedCells = visitedCells;
             metrics.revisitedCells = revisitedCells;

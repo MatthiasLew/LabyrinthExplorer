@@ -33,6 +33,10 @@ namespace Algorytm.Dane
             stringBuilder.AppendLine($"RandomSeed: {metrics.randomSeed}");
             stringBuilder.AppendLine($"Maze: {metrics.mazeName} ({metrics.mazeWidth}x{metrics.mazeHeight})");
             stringBuilder.AppendLine($"MazeType: {metrics.mazeType}");
+            stringBuilder.AppendLine($"MazeSeed: {metrics.mazeSeed}");
+            stringBuilder.AppendLine($"MazeLayoutHash: {metrics.mazeLayoutHash}");
+            stringBuilder.AppendLine($"AlgorithmSeed: {metrics.algorithmSeed}");
+            stringBuilder.AppendLine($"BenchmarkObjective: {metrics.benchmarkObjective}");
             stringBuilder.AppendLine($"StartPosition: {metrics.startPosition}");
             stringBuilder.AppendLine($"FinishPosition: {metrics.finishPosition}");
             stringBuilder.AppendLine($"ReachedGoal: {metrics.reachedGoal}");
@@ -45,6 +49,11 @@ namespace Algorytm.Dane
             stringBuilder.AppendLine($"ShortestPossiblePathLength: {metrics.shortestPossiblePathLength}");
             stringBuilder.AppendLine($"RawPathEfficiency: {metrics.pathEfficiency:F3}");
             stringBuilder.AppendLine($"OptimizedDiscoveredPathEfficiency: {metrics.optimizedDiscoveredPathEfficiency:F3}");
+            stringBuilder.AppendLine($"CandidateEvaluations: {metrics.candidateEvaluations}");
+            stringBuilder.AppendLine($"FirstSuccessIteration: {metrics.firstSuccessIteration}");
+            stringBuilder.AppendLine($"FirstSuccessCandidateEvaluation: {metrics.firstSuccessCandidateEvaluation}");
+            stringBuilder.AppendLine($"BestSolutionIteration: {metrics.bestSolutionIteration}");
+            stringBuilder.AppendLine($"BestDistanceToGoal: {metrics.bestDistanceToGoal}");
             stringBuilder.AppendLine($"VisitedCells: {metrics.visitedCells}");
             stringBuilder.AppendLine($"RevisitedCells: {metrics.revisitedCells}");
             stringBuilder.AppendLine($"BacktrackCount: {metrics.backtrackCount}");

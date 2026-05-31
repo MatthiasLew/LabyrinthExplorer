@@ -13,9 +13,15 @@ namespace Statistics
         public int runIndex;
         public string algorithmName;
         public string mazeName;
+        public string mazeType;
         public int mazeWidth;
         public int mazeHeight;
+        public int mazeSeed;
+        public string mazeLayoutHash;
         public int randomSeed;
+        public string benchmarkObjective;
+        public int candidateEvaluations;
+        public int firstSuccessCandidateEvaluation;
         public bool reachedGoal;
         public double totalRuntimeMs;
         public double logicTimeMs;
@@ -47,9 +53,15 @@ namespace Statistics
                 runIndex = runIndex,
                 algorithmName = metrics.algorithmName,
                 mazeName = metrics.mazeName,
+                mazeType = metrics.mazeType,
                 mazeWidth = metrics.mazeWidth,
                 mazeHeight = metrics.mazeHeight,
+                mazeSeed = metrics.mazeSeed,
+                mazeLayoutHash = metrics.mazeLayoutHash,
                 randomSeed = metrics.randomSeed,
+                benchmarkObjective = metrics.benchmarkObjective,
+                candidateEvaluations = metrics.candidateEvaluations,
+                firstSuccessCandidateEvaluation = metrics.firstSuccessCandidateEvaluation,
                 reachedGoal = metrics.reachedGoal,
                 totalRuntimeMs = metrics.totalRuntimeMs,
                 logicTimeMs = metrics.logicTimeMs,

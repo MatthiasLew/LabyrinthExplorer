@@ -318,6 +318,8 @@ public partial class MazeAppController
             finishX = finishPosition.x,
             finishY = finishPosition.y,
             walkableCells = new bool[currentMaze.Width * currentMaze.Height],
+            mazeSource = currentMazeSource,
+            mazeSeed = currentMazeSeed,
             savedUtc = DateTime.UtcNow.ToString("O")
         };
 

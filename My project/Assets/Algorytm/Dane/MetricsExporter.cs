@@ -67,8 +67,8 @@ namespace Algorytm.Dane
             var stringBuilder = new StringBuilder();
 
             stringBuilder.AppendLine(
-                "AlgorithmName,AlgorithmVersion,TestId,RunIndex,RandomSeed,MazeName,MazeType,MazeWidth,MazeHeight,TotalCells," +
-                "StartPosition,FinishPosition,ReachedGoal,FoundOptimalPath,FoundOptimalDiscoveredPath,StepsTaken,RawPathLength," +
+                "AlgorithmName,AlgorithmVersion,TestId,RunIndex,RandomSeed,MazeName,MazeType,MazeSeed,MazeLayoutHash,AlgorithmSeed,BenchmarkObjective,MazeWidth,MazeHeight,TotalCells," +
+                "StartPosition,FinishPosition,ReachedGoal,FoundOptimalPath,FoundOptimalDiscoveredPath,CandidateEvaluations,FirstSuccessIteration,FirstSuccessCandidateEvaluation,BestSolutionIteration,BestDistanceToGoal,StepsTaken,RawPathLength," +
                 "OptimizedDiscoveredPathLength,ShortestPossiblePathLength,RawPathEfficiency,OptimizedDiscoveredPathEfficiency," +
                 "VisitedCells,RevisitedCells,BacktrackCount,WallHits,DeadEndsEncountered,ExpandedNodes," +
                 "ValidMovesConsidered,InvalidMovesConsidered,FrontierMaxSize,Iterations,Generations,RestartCount," +
@@ -88,6 +88,10 @@ namespace Algorytm.Dane
                     Format(metrics.randomSeed),
                     Escape(metrics.mazeName),
                     Escape(metrics.mazeType),
+                    Format(metrics.mazeSeed),
+                    Escape(metrics.mazeLayoutHash),
+                    Format(metrics.algorithmSeed),
+                    Escape(metrics.benchmarkObjective),
                     Format(metrics.mazeWidth),
                     Format(metrics.mazeHeight),
                     Format(metrics.totalCells),
@@ -96,6 +100,11 @@ namespace Algorytm.Dane
                     Format(metrics.reachedGoal),
                     Format(metrics.foundOptimalPath),
                     Format(metrics.foundOptimalDiscoveredPath),
+                    Format(metrics.candidateEvaluations),
+                    Format(metrics.firstSuccessIteration),
+                    Format(metrics.firstSuccessCandidateEvaluation),
+                    Format(metrics.bestSolutionIteration),
+                    Format(metrics.bestDistanceToGoal),
                     Format(metrics.stepsTaken),
                     Format(metrics.pathLength),
                     Format(metrics.optimizedDiscoveredPathLength),

@@ -62,6 +62,8 @@ public partial class MazeAppController
         tileImages = null;
         activeTool = EditorTool.None;
         SetCurrentMazeName(string.Empty);
+        currentMazeSource = "ManualOrEdited";
+        currentMazeSeed = 0;
 
         if (runningComparisonCoroutine != null)
         {
@@ -105,6 +107,7 @@ public partial class MazeAppController
 
         placeStartNext = true;
         SetCurrentMazeName(string.Empty);
+        MarkCurrentMazeAsEdited();
         RefreshAllTiles();
         RebuildRunnerGrids();
         InvalidateDisplayedBenchmark();
@@ -167,6 +170,8 @@ public partial class MazeAppController
             Vector2Int[] corners = FindDistantCornersInMaze(mazeLayout);
             startPosition = corners[0];
             finishPosition = corners[1];
+            currentMazeSource = "GeneratedDFS";
+            currentMazeSeed = seedToUse;
 
             RefreshAllTiles();
             RebuildRunnerGrids();
@@ -286,6 +291,7 @@ public partial class MazeAppController
 
         placeStartNext = true;
         activeTool = EditorTool.DrawWalls;
+        MarkCurrentMazeAsEdited();
 
         RebuildEditorGridVisuals();
         RebuildRunnerGrids();
@@ -305,6 +311,12 @@ public partial class MazeAppController
 
         CreateEditableMaze(mazeWidth, mazeHeight);
         return currentMaze != null;
+    }
+
+    private void MarkCurrentMazeAsEdited()
+    {
+        currentMazeSource = "ManualOrEdited";
+        currentMazeSeed = 0;
     }
 
     private void SetTool(EditorTool tool, string infoMessage)

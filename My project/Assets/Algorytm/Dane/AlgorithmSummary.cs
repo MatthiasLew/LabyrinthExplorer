@@ -31,6 +31,27 @@ namespace Algorytm.Dane
         public float successRate;
 
         /// <summary>
+        /// Objective applied to runs represented by this summary.
+        /// </summary>
+        public string benchmarkObjective;
+
+        /// <summary>
+        /// Average number of evaluated candidate routes.
+        /// </summary>
+        public double averageCandidateEvaluations;
+
+        /// <summary>
+        /// Average work consumed before the first solution, counted only for successes.
+        /// </summary>
+        public double averageFirstSuccessCandidateEvaluation;
+
+        /// <summary>
+        /// Number and rate of successful raw routes that were globally optimal.
+        /// </summary>
+        public int optimalRawPathCount;
+        public float optimalRawPathRate;
+
+        /// <summary>
         /// Średni całkowity czas wykonania algorytmu w milisekundach.
         /// </summary>
         public double averageTotalRuntimeMs;
@@ -106,6 +127,12 @@ namespace Algorytm.Dane
         public double averageSuccessfulOptimizedPathEfficiency;
 
         /// <summary>
+        /// Median values reduce the influence of outliers in stochastic benchmarks.
+        /// </summary>
+        public double medianLogicTimeMs;
+        public double medianSuccessfulPathLength;
+
+        /// <summary>
         /// Tworzy podsumowanie na podstawie listy metryk pojedynczych uruchomień algorytmu.
         /// </summary>
         /// <param name="metricsList">Lista metryk do zagregowania.</param>
@@ -140,6 +167,15 @@ namespace Algorytm.Dane
                 runCount = runCount,
                 successCount = successCount,
                 successRate = (float)successCount / runCount,
+                benchmarkObjective = metricsList[0].benchmarkObjective,
+                averageCandidateEvaluations = metricsList.Average(metric => metric.candidateEvaluations),
+                averageFirstSuccessCandidateEvaluation = successfulMetrics.Count > 0
+                    ? successfulMetrics.Average(metric => metric.firstSuccessCandidateEvaluation)
+                    : 0d,
+                optimalRawPathCount = successfulMetrics.Count(metric => metric.foundOptimalPath),
+                optimalRawPathRate = successfulMetrics.Count > 0
+                    ? (float)successfulMetrics.Count(metric => metric.foundOptimalPath) / successfulMetrics.Count
+                    : 0f,
 
                 averageTotalRuntimeMs = metricsList.Average(metric => metric.totalRuntimeMs),
                 minTotalRuntimeMs = metricsList.Min(metric => metric.totalRuntimeMs),
@@ -163,8 +199,26 @@ namespace Algorytm.Dane
                     : 0,
                 averageSuccessfulOptimizedPathEfficiency = successfulMetrics.Count > 0
                     ? successfulMetrics.Average(metric => metric.optimizedDiscoveredPathEfficiency)
-                    : 0
+                    : 0,
+                medianLogicTimeMs = Median(metricsList.Select(metric => metric.logicTimeMs)),
+                medianSuccessfulPathLength = successfulMetrics.Count > 0
+                    ? Median(successfulMetrics.Select(metric => (double)metric.pathLength))
+                    : 0d
             };
+        }
+
+        private static double Median(IEnumerable<double> values)
+        {
+            List<double> ordered = values.OrderBy(value => value).ToList();
+            if (ordered.Count == 0)
+            {
+                return 0d;
+            }
+
+            int middle = ordered.Count / 2;
+            return ordered.Count % 2 == 0
+                ? (ordered[middle - 1] + ordered[middle]) / 2d
+                : ordered[middle];
         }
     }
 }

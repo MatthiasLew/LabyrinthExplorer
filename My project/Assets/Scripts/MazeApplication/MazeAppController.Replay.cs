@@ -69,19 +69,12 @@ public partial class MazeAppController
         Vector2Int? geneticMarker = null;
         Vector2Int? antMarker = null;
 
-        string noSuccessfulRun = currentLanguage == AppLanguage.Polski
-            ? "brak udanego przebiegu"
-            : "no successful run";
-        string geneticRunInfo = geneticMetrics != null
-            ? $"run {geneticMetrics.runIndex + 1}, seed {geneticMetrics.randomSeed}"
-            : noSuccessfulRun;
-        string antRunInfo = antMetrics != null
-            ? $"run {antMetrics.runIndex + 1}, seed {antMetrics.randomSeed}"
-            : noSuccessfulRun;
+        string geneticRunInfo = BuildReplayRunInfo(geneticMetrics);
+        string antRunInfo = BuildReplayRunInfo(antMetrics);
 
         UpdateInfo(currentLanguage == AppLanguage.Polski
-            ? $"SYMULACJA NAJLEPSZYCH UDANYCH PRZEBIEGÓW\nGenetyczny: {geneticRunInfo}. Mrówkowy: {antRunInfo}.\nPomarańczowy kolor przedstawia ślad pokazywanych najlepszych mrówek, a nie dokładną mapę feromonów."
-            : $"BEST SUCCESSFUL RUN REPLAY\nGenetic: {geneticRunInfo}. Ant Colony: {antRunInfo}.\nOrange represents shown best-ant paths, not the exact internal pheromone map.");
+            ? $"SYMULACJA WYBRANYCH PRZEBIEGÓW\nGenetyczny: {geneticRunInfo}. Mrówkowy: {antRunInfo}.\nGdy algorytm nie osiągnął mety, animowana jest jego najlepsza próba bez fioletowej trasy końcowej."
+            : $"SELECTED RUN REPLAY\nGenetic: {geneticRunInfo}. Ant Colony: {antRunInfo}.\nWhen an algorithm failed to reach the goal, its best failed attempt is replayed without a violet final route.");
 
         for (int segmentIndex = 0; segmentIndex < maximumSegmentCount; segmentIndex++)
         {
@@ -151,14 +144,19 @@ public partial class MazeAppController
         ResetOptimalPathOverlays();
         yield return new WaitForSeconds(0.25f);
 
-        UpdateInfo(currentLanguage == AppLanguage.Polski
-            ? "OPTYMALIZACJA PO SUKCESIE\nFioletowy środek = BFS uruchomiony dopiero po znalezieniu mety, wyłącznie po polach odkrytych przez dany algorytm."
-            : "POST-SUCCESS OPTIMIZATION\nViolet centre = BFS started only after reaching the goal, using only cells discovered by the given algorithm.");
-
         IReadOnlyList<Vector2Int> geneticPath = geneticMetrics != null ? geneticMetrics.finalPath : null;
         IReadOnlyList<Vector2Int> antPath = antMetrics != null ? antMetrics.finalPath : null;
         int geneticPathCount = geneticPath != null ? geneticPath.Count : 0;
         int antPathCount = antPath != null ? antPath.Count : 0;
+        bool hasOptimizedPath = geneticPathCount > 0 || antPathCount > 0;
+
+        UpdateInfo(currentLanguage == AppLanguage.Polski
+            ? (hasOptimizedPath
+                ? "OPTYMALIZACJA PO SUKCESIE\nFioletowy środek = BFS po wszystkich polach rzeczywiście odwiedzonych przez dany algorytm w jego budżecie pracy."
+                : "BRAK TRASY KOŃCOWEJ\nŻaden algorytm nie osiągnął mety; pokazano wyłącznie najlepsze próby eksploracji.")
+            : (hasOptimizedPath
+                ? "POST-SUCCESS OPTIMIZATION\nViolet centre = BFS over all cells genuinely visited by the given algorithm within its work budget."
+                : "NO FINAL ROUTE\nNeither algorithm reached the goal; only the best exploration attempts were replayed."));
         int maximumFinalPathCount = Mathf.Max(geneticPathCount, antPathCount);
 
         for (int pathIndex = 0; pathIndex < maximumFinalPathCount; pathIndex++)
@@ -186,6 +184,20 @@ public partial class MazeAppController
 
         DisplayBenchmarkResults(result);
         pathReplayCoroutine = null;
+    }
+
+    private string BuildReplayRunInfo(AlgorithmMetrics metrics)
+    {
+        if (metrics == null)
+        {
+            return currentLanguage == AppLanguage.Polski ? "brak przebiegu" : "no run";
+        }
+
+        string status = metrics.reachedGoal
+            ? (currentLanguage == AppLanguage.Polski ? "sukces" : "success")
+            : (currentLanguage == AppLanguage.Polski ? "najlepsza próba bez sukcesu" : "best failed attempt");
+
+        return $"run {metrics.runIndex + 1}, seed {metrics.randomSeed}, {status}";
     }
 
     private void SetGeneticReplayText(AlgorithmReplaySegment segment)
@@ -318,7 +330,8 @@ public partial class MazeAppController
             return null;
         }
 
-        AlgorithmMetrics best = null;
+        AlgorithmMetrics bestSuccessful = null;
+        AlgorithmMetrics bestFailedAttempt = null;
 
         foreach (AlgorithmMetrics metrics in benchmarkRunner.AllMetrics)
         {
@@ -327,22 +340,34 @@ public partial class MazeAppController
                 continue;
             }
 
-            // Częściowa trasa nie może być pokazywana jako rozwiązanie.
-            if (!metrics.reachedGoal || metrics.finalPath == null || metrics.finalPath.Count == 0)
+            if (metrics.reachedGoal && metrics.finalPath != null && metrics.finalPath.Count > 0)
+            {
+                if (bestSuccessful == null ||
+                    metrics.pathEfficiency > bestSuccessful.pathEfficiency ||
+                    (Mathf.Approximately(metrics.pathEfficiency, bestSuccessful.pathEfficiency) &&
+                     metrics.logicTimeMs < bestSuccessful.logicTimeMs))
+                {
+                    bestSuccessful = metrics;
+                }
+
+                continue;
+            }
+
+            if (metrics.replaySegments == null || metrics.replaySegments.Count == 0)
             {
                 continue;
             }
 
-            if (best == null ||
-                metrics.pathEfficiency > best.pathEfficiency ||
-                (Mathf.Approximately(metrics.pathEfficiency, best.pathEfficiency) &&
-                 metrics.totalRuntimeMs < best.totalRuntimeMs))
+            if (bestFailedAttempt == null ||
+                metrics.bestFitness > bestFailedAttempt.bestFitness ||
+                (Mathf.Approximately(metrics.bestFitness, bestFailedAttempt.bestFitness) &&
+                 metrics.bestDistanceToGoal < bestFailedAttempt.bestDistanceToGoal))
             {
-                best = metrics;
+                bestFailedAttempt = metrics;
             }
         }
 
-        return best;
+        return bestSuccessful ?? bestFailedAttempt;
     }
 
     private void PaintPath(Image[,] targetTiles, IReadOnlyList<Vector2Int> path, Color pathColor)

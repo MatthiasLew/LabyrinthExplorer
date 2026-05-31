@@ -330,6 +330,10 @@ public partial class MazeAppController
             RebuildRunnerGrids();
             SyncMazeSizeDropdownSelection();
             SetCurrentMazeName(Path.GetFileNameWithoutExtension(filePath));
+            currentMazeSource = string.IsNullOrWhiteSpace(data.mazeSource)
+                ? "LoadedOrLegacy"
+                : data.mazeSource;
+            currentMazeSeed = data.mazeSeed;
 
             HideLoadMazeDialog();
             InvalidateDisplayedBenchmark();

@@ -29,6 +29,7 @@ namespace Algorytm.Mrówkowy
         private const int MinimumStepBudget = 128;
         private const int MaxStagnationIterations = 25;
         private const int MaxReplaySegments = 20;
+        private const int CandidateEvaluationsPerYield = 200;
 
         private const float Alpha = 1.0f;
         private const float Beta = 2.5f;
@@ -88,24 +89,25 @@ namespace Algorytm.Mrówkowy
                 yield break;
             }
 
-            // Nie pobieramy trasy BFS przed działaniem kolonii.
-            // Budżet ruchów zależy wyłącznie od rozmiaru mapy.
             int moveBudget = Mathf.Max(
                 MinimumStepBudget,
                 maze.Width * maze.Height * 2);
 
             var rng = new global::System.Random(context.randomSeed);
             int maxIterations = context.maxIterations > 0 ? context.maxIterations : 500;
+            int maxCandidateEvaluations = context.maxCandidateEvaluations > 0
+                ? context.maxCandidateEvaluations
+                : maxIterations * AntCount;
+            maxCandidateEvaluations = Mathf.Max(AntCount, maxCandidateEvaluations);
+
             double maxRuntimeMs = context.maxRuntimeMs > 0d ? context.maxRuntimeMs : 10000d;
+            bool optimizeWithinBudget = context.objective == BenchmarkObjective.OptimizePathWithinBudget;
             var runTimer = Stopwatch.StartNew();
 
             float[,] pheromones = CreateInitialPheromoneMap(maze);
-
             var globallyVisited = new HashSet<Vector2Int>();
-            // Zbiór wykorzystany przez końcowy BFS odpowiada wyłącznie trasom,
-            // które są pokazane podczas czytelnego replayu algorytmu.
-            var presentedDiscoveredCells = new HashSet<Vector2Int>();
             var explorationTrace = new List<Vector2Int>();
+
             int revisitedCells = 0;
             int wallHits = 0;
             int deadEnds = 0;
@@ -115,24 +117,31 @@ namespace Algorytm.Mrówkowy
             float bestFitnessEver = float.MinValue;
             int stagnationCounter = 0;
             int bestIterationIndex = -1;
+            AntRunData bestAttemptEver = null;
+            AntRunData bestSuccessfulEver = null;
+            string stopReason = "MaxIterationsReached";
 
-            // Do odtwarzania zapisujemy najlepszą mrówkę z każdej nieudanej iteracji.
-            // Przebieg jest ograniczony czasowo i iteracyjnie, aby benchmark zawsze mógł się zakończyć.
             for (int iteration = 0; iteration < maxIterations; iteration++)
             {
                 if (runTimer.Elapsed.TotalMilliseconds >= maxRuntimeMs)
                 {
-                    result.endReason = "Timeout";
+                    stopReason = "Timeout";
+                    break;
+                }
+
+                int remainingCandidates = maxCandidateEvaluations - result.candidateEvaluations;
+                if (remainingCandidates <= 0)
+                {
+                    stopReason = "CandidateBudgetReached";
                     break;
                 }
 
                 profiler.BeginIteration();
 
-                var ants = new List<AntRunData>(AntCount);
-                AntRunData successfulAnt = null;
-                int successfulAntIndex = -1;
+                int antsThisIteration = Mathf.Min(AntCount, remainingCandidates);
+                var ants = new List<AntRunData>(antsThisIteration);
 
-                for (int antIndex = 0; antIndex < AntCount; antIndex++)
+                for (int antIndex = 0; antIndex < antsThisIteration; antIndex++)
                 {
                     AntRunData ant = RunSingleAnt(
                         maze,
@@ -140,7 +149,7 @@ namespace Algorytm.Mrówkowy
                         context.startPosition,
                         context.finishPosition,
                         globallyVisited,
-                        null,
+                        explorationTrace,
                         ref revisitedCells,
                         ref wallHits,
                         ref deadEnds,
@@ -150,38 +159,35 @@ namespace Algorytm.Mrówkowy
                         moveBudget,
                         rng);
 
+                    ant.AgentIndex = antIndex + 1;
                     ants.Add(ant);
+                    result.candidateEvaluations++;
 
-                    if (ant.ReachedGoal)
+                    if (ant.ReachedGoal && result.firstSuccessIteration == 0)
                     {
-                        successfulAnt = ant;
-                        successfulAntIndex = antIndex + 1;
-                        break;
+                        result.firstSuccessIteration = iteration + 1;
+                        result.firstSuccessCandidateEvaluation = result.candidateEvaluations;
                     }
                 }
 
-                AntRunData bestAntThisIteration = successfulAnt ?? ants
+                AntRunData bestSuccessfulThisIteration = ants
+                    .Where(ant => ant.ReachedGoal)
+                    .OrderBy(ant => ant.Path.Count)
+                    .ThenByDescending(ant => ant.Fitness)
+                    .FirstOrDefault();
+
+                AntRunData bestAntThisIteration = bestSuccessfulThisIteration ?? ants
                     .OrderByDescending(ant => ant.Fitness)
                     .First();
 
-                if (result.replaySegments.Count < MaxReplaySegments || successfulAnt != null)
-                {
-                    AddReplaySegment(
-                        result.replaySegments,
-                        bestAntThisIteration.Path,
-                        iteration + 1,
-                        successfulAntIndex,
-                        bestAntThisIteration.ReachedGoal);
-                    AddPresentedDiscovery(
-                        bestAntThisIteration.Path,
-                        presentedDiscoveredCells,
-                        explorationTrace);
-                }
-
                 float averageFitness = ants.Average(ant => ant.Fitness);
 
+                if (bestAttemptEver == null || bestAntThisIteration.Fitness > bestAttemptEver.Fitness)
+                {
+                    bestAttemptEver = bestAntThisIteration.Clone();
+                }
+
                 result.iterations = iteration + 1;
-                result.bestFitness = bestAntThisIteration.Fitness;
                 result.averageFitness = averageFitness;
                 result.frontierMaxSize = Mathf.Max(result.frontierMaxSize, ants.Count);
 
@@ -196,12 +202,47 @@ namespace Algorytm.Mrówkowy
                     stagnationCounter++;
                 }
 
+                result.bestFitness = bestFitnessEver;
+
+                if (bestSuccessfulThisIteration != null)
+                {
+                    bool improvesSolution =
+                        bestSuccessfulEver == null ||
+                        bestSuccessfulThisIteration.Path.Count < bestSuccessfulEver.Path.Count ||
+                        (bestSuccessfulThisIteration.Path.Count == bestSuccessfulEver.Path.Count &&
+                         bestSuccessfulThisIteration.Fitness > bestSuccessfulEver.Fitness);
+
+                    if (improvesSolution)
+                    {
+                        bestSuccessfulEver = bestSuccessfulThisIteration.Clone();
+                        result.bestSolutionIteration = iteration + 1;
+                        AddReplaySegment(
+                            result.replaySegments,
+                            bestSuccessfulThisIteration.Path,
+                            iteration + 1,
+                            bestSuccessfulThisIteration.AgentIndex,
+                            true);
+                    }
+                }
+                else
+                {
+                    AddReplaySegment(
+                        result.replaySegments,
+                        bestAntThisIteration.Path,
+                        iteration + 1,
+                        bestAntThisIteration.AgentIndex,
+                        false);
+                }
+
                 EvaporatePheromones(pheromones, maze);
                 DepositPheromones(pheromones, ants, maze, context.finishPosition);
 
-                if (successfulAnt != null)
+                if (bestSuccessfulThisIteration != null && !optimizeWithinBudget)
                 {
-                    FillResultFromAnt(result, successfulAnt, maze, context, presentedDiscoveredCells);
+                    // BFS over discovered cells is analytical/presentational output,
+                    // therefore it is intentionally excluded from search logic timing.
+                    profiler.EndIteration();
+                    FillResultFromAnt(result, bestSuccessfulEver, maze, context, globallyVisited);
                     FillSharedResultStats(
                         result,
                         globallyVisited,
@@ -211,13 +252,11 @@ namespace Algorytm.Mrówkowy
                         validMoves,
                         invalidMoves,
                         stagnationCounter,
-                        iteration,
-                        "GoalReached_FirstSuccessfulAnt_OptimizedWithinAntDiscovery");
-
+                        bestIterationIndex,
+                        "GoalReached_FirstSuccessfulIteration_BestAntSelected");
                     result.explorationTrace.Clear();
                     result.explorationTrace.AddRange(explorationTrace);
 
-                    profiler.EndIteration();
                     result.ApplyTo(metrics);
                     yield break;
                 }
@@ -230,7 +269,39 @@ namespace Algorytm.Mrówkowy
                 }
 
                 profiler.EndIteration();
-                yield return null;
+
+                if (result.candidateEvaluations >= maxCandidateEvaluations)
+                {
+                    stopReason = "CandidateBudgetReached";
+                    break;
+                }
+
+                if (result.candidateEvaluations % CandidateEvaluationsPerYield == 0)
+                {
+                    // Yield by equal evaluated-work increments, not by algorithm-specific iterations.
+                    yield return null;
+                }
+            }
+
+            result.explorationTrace.Clear();
+            result.explorationTrace.AddRange(explorationTrace);
+
+            if (bestSuccessfulEver != null)
+            {
+                FillResultFromAnt(result, bestSuccessfulEver, maze, context, globallyVisited);
+                FillSharedResultStats(
+                    result,
+                    globallyVisited,
+                    revisitedCells,
+                    wallHits,
+                    deadEnds,
+                    validMoves,
+                    invalidMoves,
+                    stagnationCounter,
+                    bestIterationIndex,
+                    stopReason + "_BestSolutionRetained");
+                result.ApplyTo(metrics);
+                yield break;
             }
 
             result.reachedGoal = false;
@@ -238,12 +309,9 @@ namespace Algorytm.Mrówkowy
             result.rawFinalPath.Clear();
             result.pathLength = 0;
             result.optimizedDiscoveredPathLength = 0;
-            result.explorationTrace.Clear();
-            result.explorationTrace.AddRange(explorationTrace);
-
-            string failureReason = string.IsNullOrWhiteSpace(result.endReason)
-                ? "MaxIterationsReached"
-                : result.endReason;
+            result.bestDistanceToGoal = bestAttemptEver != null
+                ? maze.GetManhattanDistance(bestAttemptEver.FinalPosition, context.finishPosition)
+                : maze.GetManhattanDistance(context.startPosition, context.finishPosition);
 
             FillSharedResultStats(
                 result,
@@ -255,9 +323,9 @@ namespace Algorytm.Mrówkowy
                 invalidMoves,
                 stagnationCounter,
                 bestIterationIndex,
-                failureReason);
+                stopReason);
 
-            result.additionalInfo += $"; MaxIterations={maxIterations}; MaxRuntimeMs={maxRuntimeMs:F0}";
+            result.additionalInfo += $"; MaxIterations={maxIterations}; CandidateBudget={maxCandidateEvaluations}; MaxRuntimeMs={maxRuntimeMs:F0}";
             result.ApplyTo(metrics);
         }
 
@@ -280,6 +348,17 @@ namespace Algorytm.Mrówkowy
                 reachedGoal = reachedGoal
             };
             segment.path.AddRange(path);
+
+            if (segments.Count >= MaxReplaySegments)
+            {
+                if (reachedGoal)
+                {
+                    segments[segments.Count - 1] = segment;
+                }
+
+                return;
+            }
+
             segments.Add(segment);
         }
 
@@ -627,9 +706,13 @@ namespace Algorytm.Mrówkowy
 
             result.expandedNodes = ant.Path.Count;
             result.backtrackCount = ant.BacktrackCount;
+            result.bestDistanceToGoal = ant.ReachedGoal
+                ? 0
+                : maze.GetManhattanDistance(ant.FinalPosition, context.finishPosition);
 
-            // BFS jest uruchamiany dopiero po dojściu mrówki do mety
-            // i działa wyłącznie na polach odkrytych przez tę kolonię.
+            // BFS is executed only after the colony has found the goal and is
+            // restricted to every cell genuinely visited by ACO in this run.
+            // It is an analysis layer, not a replacement for the raw ant route.
             List<Vector2Int> optimizedDiscoveredPath = ant.ReachedGoal
                 ? maze.GetShortestPathWithinCells(
                     context.startPosition,
@@ -694,8 +777,9 @@ namespace Algorytm.Mrówkowy
             result.endReason = endReason;
             result.additionalInfo =
                 $"Ants={AntCount}; Alpha={Alpha}; Beta={Beta}; Evaporation={EvaporationRate}; BestIteration={bestIterationIndex + 1}; " +
-                $"Replay=up to {MaxReplaySegments} best ants plus winning ant; stop at first success; RawPath=successful ant; " +
-                "PresentedPath=BFS over shown ant cells";
+                $"CandidateEvaluations={result.candidateEvaluations}; FirstSuccessAt={result.firstSuccessCandidateEvaluation}; " +
+                $"Replay=up to {MaxReplaySegments} representative ants; RawPath=best successful ant; " +
+                "PresentedPath=BFS over all cells visited by ACO; WallHits are not directly comparable with GA because ACO chooses legal neighbors";
         }
 
         /// <summary>
@@ -724,6 +808,26 @@ namespace Algorytm.Mrówkowy
             public float Fitness;
 
             /// <summary>
+            /// One-based ant number within the iteration, used only for replay labels.
+            /// </summary>
+            public int AgentIndex;
+
+            public AntRunData Clone()
+            {
+                var clone = new AntRunData
+                {
+                    ReachedGoal = ReachedGoal,
+                    StepsTaken = StepsTaken,
+                    BacktrackCount = BacktrackCount,
+                    Fitness = Fitness,
+                    AgentIndex = AgentIndex,
+                    FinalPosition = FinalPosition
+                };
+                clone.Path.AddRange(Path);
+                return clone;
+            }
+
+            /// <summary>
             /// Końcowa pozycja mrówki po zakończeniu przebiegu.
             /// </summary>
             public Vector2Int FinalPosition;
@@ -737,20 +841,7 @@ namespace Algorytm.Mrówkowy
             /// Tworzy pełną kopię bieżących danych mrówki.
             /// </summary>
             /// <returns>Nowa instancja zawierająca skopiowane dane.</returns>
-            public AntRunData Clone()
-            {
-                var clone = new AntRunData
-                {
-                    ReachedGoal = ReachedGoal,
-                    StepsTaken = StepsTaken,
-                    BacktrackCount = BacktrackCount,
-                    Fitness = Fitness,
-                    FinalPosition = FinalPosition
-                };
-
-                clone.Path.AddRange(Path);
-                return clone;
-            }
+            
         }
     }
 }

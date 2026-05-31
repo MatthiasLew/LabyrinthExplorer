@@ -371,7 +371,10 @@ namespace Statistics
                 ? $"{algorithm.averageSuccessfulRawPathLength:F1} kroków"
                 : "brak trasy";
 
-            return $"{displayName}: sukces {algorithm.successfulRuns}/{algorithm.totalRuns}   •   śr. surowa trasa {path}   •   logika {algorithm.averageLogicTimeMs:F2} ms";
+            string budget = algorithm.averageCandidateEvaluations > 0d
+                ? $"   •   ocenione trasy {algorithm.averageCandidateEvaluations:F0}"
+                : string.Empty;
+            return $"{displayName}: sukces {algorithm.successfulRuns}/{algorithm.totalRuns}   •   śr. surowa trasa {path}   •   logika {algorithm.averageLogicTimeMs:F2} ms{budget}";
         }
 
         private static string DeterminePathWinner(AlgorithmRunSummary genetic, AlgorithmRunSummary ant)
@@ -579,6 +582,7 @@ namespace Statistics
             public int successfulRuns;
             public double averageSuccessfulRawPathLength;
             public double averageLogicTimeMs;
+            public double averageCandidateEvaluations;
 
             public static AlgorithmRunSummary Create(
                 string algorithmName,
@@ -599,6 +603,9 @@ namespace Statistics
                         : 0d,
                     averageLogicTimeMs = entries.Count > 0
                         ? entries.Average(entry => entry.GetComparableLogicTimeMs())
+                        : 0d,
+                    averageCandidateEvaluations = entries.Count > 0
+                        ? entries.Average(entry => entry.candidateEvaluations)
                         : 0d
                 };
             }

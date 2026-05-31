@@ -86,6 +86,26 @@ namespace Algorytm.Dane
         public string mazeType;
 
         /// <summary>
+        /// Seed used to generate the maze layout; zero for manual/edited maps.
+        /// </summary>
+        public int mazeSeed;
+
+        /// <summary>
+        /// Deterministic identifier of the exact wall layout.
+        /// </summary>
+        public string mazeLayoutHash;
+
+        /// <summary>
+        /// Seed used by the stochastic solving algorithm.
+        /// </summary>
+        public int algorithmSeed;
+
+        /// <summary>
+        /// Objective used for this benchmark run.
+        /// </summary>
+        public string benchmarkObjective;
+
+        /// <summary>
         /// Szerokość labiryntu w komórkach.
         /// </summary>
         [Header("Maze Info")]
@@ -160,6 +180,32 @@ namespace Algorytm.Dane
         /// do długości ścieżki znalezionej przez algorytm.
         /// </summary>
         public float pathEfficiency;
+
+        /// <summary>
+        /// Comparable work budget consumed by the algorithm:
+        /// evaluated chromosomes for GA or evaluated ants for ACO.
+        /// </summary>
+        public int candidateEvaluations;
+
+        /// <summary>
+        /// First generation/iteration that found any valid route.
+        /// </summary>
+        public int firstSuccessIteration;
+
+        /// <summary>
+        /// Number of evaluated candidates when the first route was found.
+        /// </summary>
+        public int firstSuccessCandidateEvaluation;
+
+        /// <summary>
+        /// Generation/iteration that produced the retained best raw route.
+        /// </summary>
+        public int bestSolutionIteration;
+
+        /// <summary>
+        /// Distance to target of the best failed attempt; zero for a success.
+        /// </summary>
+        public int bestDistanceToGoal;
 
         /// <summary>
         /// Liczba unikalnych odwiedzonych komórek.

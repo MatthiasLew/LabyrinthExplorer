@@ -5,6 +5,16 @@ using UnityEngine;
 namespace Algorytm.Dane
 {
     /// <summary>
+    /// Defines what a benchmark run is expected to optimize.
+    /// Value zero is deliberately the fair-comparison default for existing Unity scenes.
+    /// </summary>
+    public enum BenchmarkObjective
+    {
+        OptimizePathWithinBudget = 0,
+        FindFirstSolution = 1
+    }
+
+    /// <summary>
     /// Holds input data and callbacks required to run maze algorithms.
     /// </summary>
     [Serializable]
@@ -16,10 +26,16 @@ namespace Algorytm.Dane
         public int mazeHeight;
         public Vector2Int startPosition;
         public Vector2Int finishPosition;
+
+        // Reproducibility: the map and stochastic algorithm have separate seeds.
+        public int mazeSeed;
+        public string mazeLayoutHash;
         public int randomSeed;
 
         // Hard safety limits make heuristic runs terminate predictably.
+        public BenchmarkObjective objective = BenchmarkObjective.OptimizePathWithinBudget;
         public int maxIterations = 500;
+        public int maxCandidateEvaluations = 20000;
         public double maxRuntimeMs = 10000d;
 
         public bool enableVisualization;

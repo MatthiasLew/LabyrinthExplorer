@@ -377,6 +377,28 @@ namespace Algorytm.Genetyczny
         }
 
         /// <summary>
+        /// Creates a deterministic compact identifier of the current wall layout.
+        /// It is used in exported benchmark data to prove that both algorithms
+        /// were evaluated on exactly the same maze.
+        /// </summary>
+        public string GetLayoutHash()
+        {
+            unchecked
+            {
+                uint hash = 2166136261u;
+                hash = (hash ^ (uint)width) * 16777619u;
+                hash = (hash ^ (uint)height) * 16777619u;
+
+                for (int i = 0; i < walkableCells.Length; i++)
+                {
+                    hash = (hash ^ (walkableCells[i] ? 1u : 0u)) * 16777619u;
+                }
+
+                return hash.ToString("X8");
+            }
+        }
+
+        /// <summary>
         /// Oblicza odległość Manhattan pomiędzy dwiema pozycjami.
         /// </summary>
         /// <param name="from">Pozycja początkowa.</param>

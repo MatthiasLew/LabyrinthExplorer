@@ -30,6 +30,7 @@ namespace Algorytm.Genetyczny
         private const int TournamentSize = 3;
         private const int MaxStagnationGenerations = 30;
         private const int MaxReplaySegments = 20;
+        private const int CandidateEvaluationsPerYield = 200;
 
         /// <summary>
         /// Uruchamia algorytm genetyczny dla zadanego kontekstu i zapisuje wynik do przekazanego obiektu metryk.
@@ -82,21 +83,22 @@ namespace Algorytm.Genetyczny
                 yield break;
             }
 
-            // Nie pobieramy trasy BFS przed działaniem algorytmu.
-            // Budżet ruchów zależy wyłącznie od rozmiaru mapy.
             int moveBudget = Mathf.Max(
                 MinimumChromosomeLength,
                 maze.Width * maze.Height * 2);
 
             var rng = new global::System.Random(context.randomSeed);
             int maxGenerations = context.maxIterations > 0 ? context.maxIterations : 500;
+            int maxCandidateEvaluations = context.maxCandidateEvaluations > 0
+                ? context.maxCandidateEvaluations
+                : maxGenerations * PopulationSize;
+            maxCandidateEvaluations = Mathf.Max(PopulationSize, maxCandidateEvaluations);
+
             double maxRuntimeMs = context.maxRuntimeMs > 0d ? context.maxRuntimeMs : 10000d;
+            bool optimizeWithinBudget = context.objective == BenchmarkObjective.OptimizePathWithinBudget;
             var runTimer = Stopwatch.StartNew();
 
             var globallyVisited = new HashSet<Vector2Int>();
-            // Do odtwarzania i końcowego BFS dopuszczamy tylko ścieżki najlepszych
-            // potomków, które użytkownik faktycznie zobaczy na ekranie.
-            var presentedDiscoveredCells = new HashSet<Vector2Int>();
             var explorationTrace = new List<Vector2Int>();
             var visualizedCells = context.enableVisualization ? new HashSet<Vector2Int>() : null;
             int revisitedCells = 0;
@@ -110,13 +112,21 @@ namespace Algorytm.Genetyczny
 
             float bestFitnessEver = float.MinValue;
             int stagnationCounter = 0;
+            Chromosome bestAttemptEver = null;
+            Chromosome bestSuccessfulEver = null;
+            string stopReason = "MaxGenerationsReached";
 
-            // Przebieg jest ograniczony czasowo i iteracyjnie, aby benchmark zawsze kończył się deterministycznie.
             for (int generation = 0; generation < maxGenerations; generation++)
             {
                 if (runTimer.Elapsed.TotalMilliseconds >= maxRuntimeMs)
                 {
-                    result.endReason = "Timeout";
+                    stopReason = "Timeout";
+                    break;
+                }
+
+                if (result.candidateEvaluations + population.Count > maxCandidateEvaluations)
+                {
+                    stopReason = "CandidateBudgetReached";
                     break;
                 }
 
@@ -128,19 +138,31 @@ namespace Algorytm.Genetyczny
                     context.startPosition,
                     context.finishPosition,
                     globallyVisited,
-                    null,
+                    explorationTrace,
                     ref revisitedCells,
                     ref wallHits,
                     ref deadEnds,
                     ref validMoves,
                     ref invalidMoves);
 
+                result.candidateEvaluations += population.Count;
                 population = population
                     .OrderByDescending(chromosome => chromosome.Fitness)
                     .ToList();
 
                 Chromosome bestOfGeneration = population[0];
+                Chromosome bestSuccessfulOfGeneration = population
+                    .Where(chromosome => chromosome.ReachedGoal)
+                    .OrderBy(chromosome => chromosome.Path.Count)
+                    .ThenByDescending(chromosome => chromosome.Fitness)
+                    .FirstOrDefault();
+
                 float averageFitness = population.Average(chromosome => chromosome.Fitness);
+
+                if (bestAttemptEver == null || bestOfGeneration.Fitness > bestAttemptEver.Fitness)
+                {
+                    bestAttemptEver = bestOfGeneration.Clone();
+                }
 
                 if (context.enableVisualization && context.onVisualizationStep != null)
                 {
@@ -150,7 +172,6 @@ namespace Algorytm.Genetyczny
 
                 result.generations = generation + 1;
                 result.iterations = generation + 1;
-                result.bestFitness = bestOfGeneration.Fitness;
                 result.averageFitness = averageFitness;
                 result.frontierMaxSize = Mathf.Max(result.frontierMaxSize, population.Count);
 
@@ -160,66 +181,81 @@ namespace Algorytm.Genetyczny
                     bestFitnessEver = bestOfGeneration.Fitness;
                     bestGenerationIndex = generation;
                     stagnationCounter = 0;
-
-                    if (result.replaySegments.Count < MaxReplaySegments || bestOfGeneration.ReachedGoal)
-                    {
-                        AddReplaySegment(
-                            result.replaySegments,
-                            bestOfGeneration.Path,
-                            generation + 1,
-                            1,
-                            bestOfGeneration.ReachedGoal);
-                        AddPresentedDiscovery(
-                            bestOfGeneration.Path,
-                            presentedDiscoveredCells,
-                            explorationTrace);
-                    }
+                    AddReplaySegment(
+                        result.replaySegments,
+                        bestOfGeneration.Path,
+                        generation + 1,
+                        1,
+                        bestOfGeneration.ReachedGoal);
                 }
                 else
                 {
                     stagnationCounter++;
                 }
 
-                if (bestOfGeneration.ReachedGoal)
+                result.bestFitness = bestFitnessEver;
+
+                if (bestSuccessfulOfGeneration != null)
                 {
-                    if (!newBestOffspring)
+                    if (result.firstSuccessIteration == 0)
                     {
-                        AddReplaySegment(
-                            result.replaySegments,
-                            bestOfGeneration.Path,
-                            generation + 1,
-                            1,
-                            true);
-                        AddPresentedDiscovery(
-                            bestOfGeneration.Path,
-                            presentedDiscoveredCells,
-                            explorationTrace);
+                        result.firstSuccessIteration = generation + 1;
+                        result.firstSuccessCandidateEvaluation = result.candidateEvaluations;
                     }
 
-                    if (context.enableVisualization && context.onVisualizationStep != null)
+                    bool improvesSolution =
+                        bestSuccessfulEver == null ||
+                        bestSuccessfulOfGeneration.Path.Count < bestSuccessfulEver.Path.Count ||
+                        (bestSuccessfulOfGeneration.Path.Count == bestSuccessfulEver.Path.Count &&
+                         bestSuccessfulOfGeneration.Fitness > bestSuccessfulEver.Fitness);
+
+                    if (improvesSolution)
                     {
-                        EmitPath(context.onVisualizationStep, bestOfGeneration.Path);
+                        bestSuccessfulEver = bestSuccessfulOfGeneration.Clone();
+                        result.bestSolutionIteration = generation + 1;
+
+                        if (!newBestOffspring || bestSuccessfulOfGeneration != bestOfGeneration)
+                        {
+                            AddReplaySegment(
+                                result.replaySegments,
+                                bestSuccessfulOfGeneration.Path,
+                                generation + 1,
+                                1,
+                                true);
+                        }
                     }
 
-                    FillResultFromChromosome(result, bestOfGeneration, maze, context, presentedDiscoveredCells);
-                    FillSharedResultStats(
-                        result,
-                        globallyVisited,
-                        revisitedCells,
-                        wallHits,
-                        deadEnds,
-                        validMoves,
-                        invalidMoves,
-                        stagnationCounter,
-                        generation,
-                        "GoalReached_OptimizedWithinGeneticDiscovery");
+                    if (!optimizeWithinBudget)
+                    {
+                        // BFS over discovered cells is analytical/presentational output,
+                        // therefore it is intentionally excluded from search logic timing.
+                        profiler.EndIteration();
+                        FillResultFromChromosome(result, bestSuccessfulEver, maze, context, globallyVisited);
+                        FillSharedResultStats(
+                            result,
+                            globallyVisited,
+                            revisitedCells,
+                            wallHits,
+                            deadEnds,
+                            validMoves,
+                            invalidMoves,
+                            stagnationCounter,
+                            bestGenerationIndex,
+                            "GoalReached_FirstSolution");
+                        result.explorationTrace.Clear();
+                        result.explorationTrace.AddRange(explorationTrace);
 
-                    result.explorationTrace.Clear();
-                    result.explorationTrace.AddRange(explorationTrace);
+                        result.ApplyTo(metrics);
+                        yield break;
+                    }
+                }
 
-                    profiler.EndIteration();
-                    result.ApplyTo(metrics);
-                    yield break;
+                profiler.EndIteration();
+
+                if (result.candidateEvaluations >= maxCandidateEvaluations)
+                {
+                    stopReason = "CandidateBudgetReached";
+                    break;
                 }
 
                 if (stagnationCounter >= MaxStagnationGenerations)
@@ -227,26 +263,11 @@ namespace Algorytm.Genetyczny
                     result.restartCount++;
                     population = CreateInitialPopulation(moveBudget, rng);
                     stagnationCounter = 0;
-
-                    profiler.EndIteration();
-
-                    if (context.enableVisualization && context.stepDelaySeconds > 0f)
-                    {
-                        profiler.BeginVisualization();
-                        yield return new WaitForSeconds(context.stepDelaySeconds);
-                        profiler.EndVisualization();
-                    }
-                    else
-                    {
-                        yield return null;
-                    }
-
-                    continue;
                 }
-
-                population = CreateNextGeneration(population, rng);
-
-                profiler.EndIteration();
+                else
+                {
+                    population = CreateNextGeneration(population, rng);
+                }
 
                 if (context.enableVisualization && context.stepDelaySeconds > 0f)
                 {
@@ -254,10 +275,32 @@ namespace Algorytm.Genetyczny
                     yield return new WaitForSeconds(context.stepDelaySeconds);
                     profiler.EndVisualization();
                 }
-                else
+                else if (result.candidateEvaluations % CandidateEvaluationsPerYield == 0)
                 {
+                    // Yield by equal evaluated-work increments, not by algorithm-specific generations.
                     yield return null;
                 }
+            }
+
+            result.explorationTrace.Clear();
+            result.explorationTrace.AddRange(explorationTrace);
+
+            if (bestSuccessfulEver != null)
+            {
+                FillResultFromChromosome(result, bestSuccessfulEver, maze, context, globallyVisited);
+                FillSharedResultStats(
+                    result,
+                    globallyVisited,
+                    revisitedCells,
+                    wallHits,
+                    deadEnds,
+                    validMoves,
+                    invalidMoves,
+                    stagnationCounter,
+                    bestGenerationIndex,
+                    stopReason + "_BestSolutionRetained");
+                result.ApplyTo(metrics);
+                yield break;
             }
 
             result.reachedGoal = false;
@@ -265,12 +308,9 @@ namespace Algorytm.Genetyczny
             result.rawFinalPath.Clear();
             result.pathLength = 0;
             result.optimizedDiscoveredPathLength = 0;
-            result.explorationTrace.Clear();
-            result.explorationTrace.AddRange(explorationTrace);
-
-            string failureReason = string.IsNullOrWhiteSpace(result.endReason)
-                ? "MaxGenerationsReached"
-                : result.endReason;
+            result.bestDistanceToGoal = bestAttemptEver != null
+                ? maze.GetManhattanDistance(bestAttemptEver.FinalPosition, context.finishPosition)
+                : maze.GetManhattanDistance(context.startPosition, context.finishPosition);
 
             FillSharedResultStats(
                 result,
@@ -282,9 +322,9 @@ namespace Algorytm.Genetyczny
                 invalidMoves,
                 stagnationCounter,
                 bestGenerationIndex,
-                failureReason);
+                stopReason);
 
-            result.additionalInfo += $"; MaxGenerations={maxGenerations}; MaxRuntimeMs={maxRuntimeMs:F0}";
+            result.additionalInfo += $"; MaxGenerations={maxGenerations}; CandidateBudget={maxCandidateEvaluations}; MaxRuntimeMs={maxRuntimeMs:F0}";
             result.ApplyTo(metrics);
         }
 
@@ -339,6 +379,17 @@ namespace Algorytm.Genetyczny
                 reachedGoal = reachedGoal
             };
             segment.path.AddRange(path);
+
+            if (segments.Count >= MaxReplaySegments)
+            {
+                if (reachedGoal)
+                {
+                    segments[segments.Count - 1] = segment;
+                }
+
+                return;
+            }
+
             segments.Add(segment);
         }
 
@@ -584,10 +635,13 @@ namespace Algorytm.Genetyczny
 
             result.expandedNodes = chromosome.Path.Count;
             result.backtrackCount = chromosome.BacktrackCount;
+            result.bestDistanceToGoal = chromosome.ReachedGoal
+                ? 0
+                : maze.GetManhattanDistance(chromosome.FinalPosition, context.finishPosition);
 
-            // BFS jest uruchamiany dopiero po znalezieniu mety przez algorytm
-            // i może korzystać wyłącznie z komórek odkrytych w jego przebiegu.
-            // Nie podstawia globalnego rozwiązania labiryntu jako wyniku genetycznego.
+            // BFS is executed only after GA has found a goal and it is restricted
+            // to every cell genuinely visited by GA during this benchmark run.
+            // It is an analysis layer, not a replacement for the raw GA route.
             List<Vector2Int> optimizedDiscoveredPath = chromosome.ReachedGoal
                 ? maze.GetShortestPathWithinCells(
                     context.startPosition,
@@ -652,8 +706,9 @@ namespace Algorytm.Genetyczny
             result.endReason = endReason;
             result.additionalInfo =
                 $"Population={PopulationSize}; Mutation={MutationChance}; BestGeneration={bestGenerationIndex + 1}; " +
-                $"Replay=up to {MaxReplaySegments} new best offspring plus winning offspring; RawPath=successful offspring; " +
-                "PresentedPath=BFS over shown Genetic cells";
+                $"CandidateEvaluations={result.candidateEvaluations}; FirstSuccessAt={result.firstSuccessCandidateEvaluation}; " +
+                $"Replay=up to {MaxReplaySegments} representative offspring; RawPath=best successful offspring; " +
+                "PresentedPath=BFS over all cells visited by GA; WallHits are GA-specific diagnostics and must not be compared directly with ACO";
         }
     }
 }

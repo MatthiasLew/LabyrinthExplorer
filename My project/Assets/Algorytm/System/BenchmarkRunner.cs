@@ -261,6 +261,10 @@ namespace Algorytm.System
 
             metrics.mazeName = context.mazeName;
             metrics.mazeType = context.mazeType;
+            metrics.mazeSeed = context.mazeSeed;
+            metrics.mazeLayoutHash = context.mazeLayoutHash;
+            metrics.algorithmSeed = context.randomSeed;
+            metrics.benchmarkObjective = context.objective.ToString();
             metrics.mazeWidth = context.mazeWidth;
             metrics.mazeHeight = context.mazeHeight;
             metrics.startPosition = context.startPosition;
@@ -287,12 +291,16 @@ namespace Algorytm.System
             {
                 mazeName = sourceContext.mazeName,
                 mazeType = sourceContext.mazeType,
+                mazeSeed = sourceContext.mazeSeed,
+                mazeLayoutHash = sourceContext.mazeLayoutHash,
                 mazeWidth = sourceContext.mazeWidth,
                 mazeHeight = sourceContext.mazeHeight,
                 startPosition = sourceContext.startPosition,
                 finishPosition = sourceContext.finishPosition,
                 randomSeed = randomSeed,
+                objective = sourceContext.objective,
                 maxIterations = sourceContext.maxIterations,
+                maxCandidateEvaluations = sourceContext.maxCandidateEvaluations,
                 maxRuntimeMs = sourceContext.maxRuntimeMs,
                 enableVisualization = sourceContext.enableVisualization,
                 stepDelaySeconds = sourceContext.stepDelaySeconds,
