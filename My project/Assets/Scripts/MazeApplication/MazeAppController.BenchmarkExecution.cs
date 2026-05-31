@@ -22,31 +22,31 @@ public partial class MazeAppController
     {
         if (runningComparisonCoroutine != null)
         {
-            UpdateInfo("Benchmark już działa.");
+            UpdateInfo(TextByLanguage("Benchmark już działa.", "Benchmark is already running."));
             return;
         }
 
         if (benchmarkRunner == null)
         {
-            UpdateInfo("Brak BenchmarkRunner w scenie.");
+            UpdateInfo(TextByLanguage("Brak BenchmarkRunner w scenie.", "BenchmarkRunner is missing from the scene."));
             return;
         }
 
         if (!EnsureMazeExists())
         {
-            UpdateInfo("Najpierw utwórz labirynt.");
+            UpdateInfo(TextByLanguage("Najpierw utwórz labirynt.", "Create a maze first."));
             return;
         }
 
         if (!currentMaze.IsWalkable(startPosition) || !currentMaze.IsWalkable(finishPosition))
         {
-            UpdateInfo("Start i meta muszą być na polach przechodnich.");
+            UpdateInfo(TextByLanguage("Start i meta muszą być na polach przechodnich.", "Start and finish must be placed on walkable cells."));
             return;
         }
 
         if (startPosition == finishPosition)
         {
-            UpdateInfo("Start i meta nie mogą być na tym samym polu.");
+            UpdateInfo(TextByLanguage("Start i meta nie mogą być na tym samym polu.", "Start and finish cannot occupy the same cell."));
             return;
         }
 
@@ -54,7 +54,7 @@ public partial class MazeAppController
         // BFS dla prezentowanej trasy uruchomi dopiero dany algorytm po dotarciu do mety.
         if (!currentMaze.HasReachablePath(startPosition, finishPosition))
         {
-            UpdateInfo("Brak poprawnej ścieżki od startu do mety.");
+            UpdateInfo(TextByLanguage("Brak poprawnej ścieżki od startu do mety.", "No valid path exists between start and finish."));
             return;
         }
 
@@ -225,7 +225,7 @@ public partial class MazeAppController
         measurementHeaderText.text = prefix + GetActiveMazeDisplayName();
     }
 
-    private static string ShortAlgorithmName(string algorithmName)
+    private string ShortAlgorithmName(string algorithmName)
     {
         if (string.IsNullOrWhiteSpace(algorithmName))
         {
@@ -234,13 +234,13 @@ public partial class MazeAppController
 
         if (algorithmName.Contains("Genetic", StringComparison.OrdinalIgnoreCase))
         {
-            return "Genetyczny";
+            return TextByLanguage("Genetyczny", "Genetic");
         }
 
         if (algorithmName.Contains("Ant", StringComparison.OrdinalIgnoreCase) ||
             algorithmName.Contains("Colony", StringComparison.OrdinalIgnoreCase))
         {
-            return "Mrówkowy";
+            return TextByLanguage("Mrówkowy", "Ant Colony");
         }
 
         return algorithmName;

@@ -18,6 +18,14 @@ namespace Statistics
         private const float SummaryHeight = 106f;
         private const float CardHeight = 210f;
         private const float PanelPadding = 18f;
+        private const string LanguagePrefKey = "settings_language";
+
+        private bool IsPolish => PlayerPrefs.GetInt(LanguagePrefKey, 0) == 0;
+
+        private string TextByLanguage(string polish, string english)
+        {
+            return IsPolish ? polish : english;
+        }
 
         private BenchmarkHistoryStore historyStore;
         private RectTransform rootPanel;
@@ -225,14 +233,18 @@ namespace Statistics
 
             if (measurements.Count == 0)
             {
-                summaryText.text = "WYNIKI POMIARÓW\nBrak zapisanych pomiarów.";
+                summaryText.text = TextByLanguage(
+                    "WYNIKI POMIARÓW\nBrak zapisanych pomiarów.",
+                    "MEASUREMENT RESULTS\nNo saved measurements.");
                 return;
             }
 
             int successfulRuns = history.Count(entry => entry != null && entry.reachedGoal);
-            summaryText.text =
+            summaryText.text = TextByLanguage(
                 $"WYNIKI POMIARÓW   •   Pomiarów: {measurements.Count}\n" +
-                $"Zapisane próby algorytmów: {history.Count}   •   Udane: {successfulRuns}";
+                $"Zapisane próby algorytmów: {history.Count}   •   Udane: {successfulRuns}",
+                $"MEASUREMENT RESULTS   •   Measurements: {measurements.Count}\n" +
+                $"Stored algorithm runs: {history.Count}   •   Successful: {successfulRuns}");
         }
 
         private void ClearCards()
@@ -253,7 +265,7 @@ namespace Statistics
         private void DisplayEmptyMessage()
         {
             GameObject card = CreateCard("EmptyHistory", 94f, new Color(0.13f, 0.13f, 0.13f, 1f));
-            AddLine(card, "Wykonaj pomiar, aby wynik pojawił się tutaj.", 21f, FontStyles.Normal, Color.white, 64f);
+            AddLine(card, TextByLanguage("Wykonaj pomiar, aby wynik pojawił się tutaj.", "Run a benchmark to see its result here."), 21f, FontStyles.Normal, Color.white, 64f);
         }
 
         private void DisplayMeasurementCard(BenchmarkMeasurementSummary measurement, int position)
@@ -261,7 +273,7 @@ namespace Statistics
             AlgorithmRunSummary genetic = measurement.GetAlgorithm("Genetic");
             AlgorithmRunSummary ant = measurement.GetAlgorithm("Ant");
 
-            string maze = string.IsNullOrWhiteSpace(measurement.mazeName) ? "Labirynt" : measurement.mazeName;
+            string maze = string.IsNullOrWhiteSpace(measurement.mazeName) ? TextByLanguage("Labirynt", "Maze") : measurement.mazeName;
             string pathWinner = DeterminePathWinner(genetic, ant);
             string timeWinner = DetermineTimeWinner(genetic, ant);
 
@@ -274,7 +286,7 @@ namespace Statistics
 
             AddLine(
                 card,
-                $"#{position}   {maze} ({measurement.mazeWidth}x{measurement.mazeHeight})   •   Próby: {measurement.runCountPerAlgorithm}",
+                TextByLanguage($"#{position}   {maze} ({measurement.mazeWidth}x{measurement.mazeHeight})   •   Próby: {measurement.runCountPerAlgorithm}", $"#{position}   {maze} ({measurement.mazeWidth}x{measurement.mazeHeight})   •   Runs: {measurement.runCountPerAlgorithm}"),
                 21f,
                 FontStyles.Bold,
                 Color.white,
@@ -282,7 +294,7 @@ namespace Statistics
 
             AddLine(
                 card,
-                $"Lepsza surowa trasa: {pathWinner}   •   Szybsza logika: {timeWinner}",
+                TextByLanguage($"Lepsza surowa trasa: {pathWinner}   •   Szybsza logika: {timeWinner}", $"Better raw route: {pathWinner}   •   Faster logic: {timeWinner}"),
                 18f,
                 FontStyles.Bold,
                 new Color(0.90f, 0.94f, 0.88f, 1f),
@@ -290,7 +302,7 @@ namespace Statistics
 
             AddLine(
                 card,
-                BuildAlgorithmLine("Genetyczny", genetic),
+                BuildAlgorithmLine(TextByLanguage("Genetyczny", "Genetic"), genetic),
                 18f,
                 FontStyles.Normal,
                 new Color(0.91f, 0.91f, 0.91f, 1f),
@@ -298,7 +310,7 @@ namespace Statistics
 
             AddLine(
                 card,
-                BuildAlgorithmLine("Mrówkowy", ant),
+                BuildAlgorithmLine(TextByLanguage("Mrówkowy", "Ant Colony"), ant),
                 18f,
                 FontStyles.Normal,
                 new Color(0.91f, 0.91f, 0.91f, 1f),
@@ -360,67 +372,76 @@ namespace Statistics
             text.raycastTarget = false;
         }
 
-        private static string BuildAlgorithmLine(string displayName, AlgorithmRunSummary algorithm)
+        private string BuildAlgorithmLine(string displayName, AlgorithmRunSummary algorithm)
         {
             if (algorithm == null || algorithm.totalRuns == 0)
             {
-                return $"{displayName}: brak danych";
+                return TextByLanguage($"{displayName}: brak danych", $"{displayName}: no data");
             }
 
             string path = algorithm.successfulRuns > 0
-                ? $"{algorithm.averageSuccessfulRawPathLength:F1} kroków"
-                : "brak trasy";
+                ? TextByLanguage($"{algorithm.averageSuccessfulRawPathLength:F1} kroków", $"{algorithm.averageSuccessfulRawPathLength:F1} steps")
+                : TextByLanguage("brak trasy", "no route");
 
             string budget = algorithm.averageCandidateEvaluations > 0d
-                ? $"   •   ocenione trasy {algorithm.averageCandidateEvaluations:F0}"
+                ? TextByLanguage(
+                    $"   •   ocenione trasy {algorithm.averageCandidateEvaluations:F0}",
+                    $"   •   evaluated routes {algorithm.averageCandidateEvaluations:F0}")
                 : string.Empty;
-            return $"{displayName}: sukces {algorithm.successfulRuns}/{algorithm.totalRuns}   •   śr. surowa trasa {path}   •   logika {algorithm.averageLogicTimeMs:F2} ms{budget}";
+
+            return TextByLanguage(
+                $"{displayName}: sukces {algorithm.successfulRuns}/{algorithm.totalRuns}   •   śr. surowa trasa {path}   •   logika {algorithm.averageLogicTimeMs:F2} ms{budget}",
+                $"{displayName}: success {algorithm.successfulRuns}/{algorithm.totalRuns}   •   avg. raw route {path}   •   logic {algorithm.averageLogicTimeMs:F2} ms{budget}");
         }
 
-        private static string DeterminePathWinner(AlgorithmRunSummary genetic, AlgorithmRunSummary ant)
+        private string DeterminePathWinner(AlgorithmRunSummary genetic, AlgorithmRunSummary ant)
         {
             if (genetic == null || genetic.successfulRuns == 0)
             {
-                return ant != null && ant.successfulRuns > 0 ? "Mrówkowy" : "brak";
+                return ant != null && ant.successfulRuns > 0
+                    ? TextByLanguage("Mrówkowy", "Ant Colony")
+                    : TextByLanguage("brak", "none");
             }
 
             if (ant == null || ant.successfulRuns == 0)
             {
-                return "Genetyczny";
+                return TextByLanguage("Genetyczny", "Genetic");
             }
 
             if (Mathf.Approximately(
                 (float)genetic.averageSuccessfulRawPathLength,
                 (float)ant.averageSuccessfulRawPathLength))
             {
-                return "remis";
+                return TextByLanguage("remis", "tie");
             }
 
             return genetic.averageSuccessfulRawPathLength < ant.averageSuccessfulRawPathLength
-                ? "Genetyczny"
-                : "Mrówkowy";
+                ? TextByLanguage("Genetyczny", "Genetic")
+                : TextByLanguage("Mrówkowy", "Ant Colony");
         }
 
-        private static string DetermineTimeWinner(AlgorithmRunSummary genetic, AlgorithmRunSummary ant)
+        private string DetermineTimeWinner(AlgorithmRunSummary genetic, AlgorithmRunSummary ant)
         {
             if (genetic == null || genetic.totalRuns == 0)
             {
-                return ant != null && ant.totalRuns > 0 ? "Mrówkowy" : "brak";
+                return ant != null && ant.totalRuns > 0
+                    ? TextByLanguage("Mrówkowy", "Ant Colony")
+                    : TextByLanguage("brak", "none");
             }
 
             if (ant == null || ant.totalRuns == 0)
             {
-                return "Genetyczny";
+                return TextByLanguage("Genetyczny", "Genetic");
             }
 
             if (Mathf.Approximately((float)genetic.averageLogicTimeMs, (float)ant.averageLogicTimeMs))
             {
-                return "remis";
+                return TextByLanguage("remis", "tie");
             }
 
             return genetic.averageLogicTimeMs < ant.averageLogicTimeMs
-                ? "Genetyczny"
-                : "Mrówkowy";
+                ? TextByLanguage("Genetyczny", "Genetic")
+                : TextByLanguage("Mrówkowy", "Ant Colony");
         }
 
         private void ResolveFontResources()

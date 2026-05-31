@@ -18,24 +18,29 @@ using UnityEngine.UI;
 /// </summary>
 public partial class MazeAppController
 {
+    private TMP_Text loadMazeDialogTitleText;
+    private TMP_Text loadMazeDialogCloseButtonText;
+    private int loadMazeDialogFileCount;
+
     private void ShowLoadMazeDialog()
     {
         TrySetupRunnerUI();
 
         if (mazeRunnerPanel == null)
         {
-            UpdateInfo("Nie znaleziono panelu labiryntu.");
+            UpdateInfo(TextByLanguage("Nie znaleziono panelu labiryntu.", "Maze panel not found."));
             return;
         }
 
         string[] files = GetSavedMazeFiles();
         if (files.Length == 0)
         {
-            UpdateInfo("Brak zapisanych labiryntów.");
+            UpdateInfo(TextByLanguage("Brak zapisanych labiryntów.", "No saved mazes found."));
             return;
         }
 
         EnsureLoadMazeDialogBuilt();
+        UpdateLoadMazeDialogLanguage();
         PopulateLoadMazeDialog(files);
 
         if (loadMazeDialogOverlay != null)
@@ -63,7 +68,7 @@ public partial class MazeAppController
         TMP_FontAsset defaultFont = TMP_Settings.defaultFontAsset;
         if (defaultFont == null || mazeRunnerPanel == null)
         {
-            UpdateInfo("Nie można utworzyć okna ładowania.");
+            UpdateInfo(TextByLanguage("Nie można utworzyć okna wczytywania.", "Unable to create load dialog."));
             return;
         }
 
@@ -89,9 +94,9 @@ public partial class MazeAppController
         panelRect.anchoredPosition = Vector2.zero;
         panel.GetComponent<Image>().color = saveDialogPanelColor;
 
-        TMP_Text title = CreateDialogLabel(
+        loadMazeDialogTitleText = CreateDialogLabel(
             panelRect,
-            "Load Maze",
+            TextByLanguage("Wczytaj labirynt", "Load Maze"),
             new Vector2(0.5f, 1f),
             new Vector2(0.5f, 1f),
             new Vector2(0.5f, 1f),
@@ -104,7 +109,7 @@ public partial class MazeAppController
 
         TMP_Text info = CreateDialogLabel(
             panelRect,
-            "Choose a saved maze:",
+            TextByLanguage("Wybierz zapisany labirynt:", "Choose a saved maze:"),
             new Vector2(0.5f, 1f),
             new Vector2(0.5f, 1f),
             new Vector2(0.5f, 1f),
@@ -171,14 +176,41 @@ public partial class MazeAppController
         scrollRect.movementType = ScrollRect.MovementType.Clamped;
         scrollRect.scrollSensitivity = 24f;
 
-        CreateDialogButton(panelRect, "Close", new Vector2(0f, -284f), HideLoadMazeDialog, defaultFont);
+        Button closeButton = CreateDialogButton(
+            panelRect,
+            TextByLanguage("Zamknij", "Close"),
+            new Vector2(0f, -284f),
+            HideLoadMazeDialog,
+            defaultFont);
+        loadMazeDialogCloseButtonText = closeButton.GetComponentInChildren<TMP_Text>(true);
 
         loadMazeListContent = contentRect;
         loadMazeDialogOverlay.SetActive(false);
 
-        if (title != null)
+        if (loadMazeDialogTitleText != null)
         {
-            title.raycastTarget = false;
+            loadMazeDialogTitleText.raycastTarget = false;
+        }
+    }
+
+    private void UpdateLoadMazeDialogLanguage()
+    {
+        if (loadMazeDialogTitleText != null)
+        {
+            loadMazeDialogTitleText.text = TextByLanguage("Wczytaj labirynt", "Load Maze");
+        }
+
+        if (loadMazeDialogCloseButtonText != null)
+        {
+            loadMazeDialogCloseButtonText.text = TextByLanguage("Zamknij", "Close");
+        }
+
+        if (loadMazeDialogInfoText != null && loadMazeDialogFileCount > 0)
+        {
+            loadMazeDialogInfoText.text = TextByLanguage(
+                $"Wybierz zapisany labirynt ({loadMazeDialogFileCount}):",
+                $"Choose a saved maze ({loadMazeDialogFileCount}):");
+            loadMazeDialogInfoText.color = Color.white;
         }
     }
 
@@ -205,9 +237,12 @@ public partial class MazeAppController
             CreateLoadListButton(loadMazeListContent, defaultFont, path);
         }
 
+        loadMazeDialogFileCount = files.Length;
         if (loadMazeDialogInfoText != null)
         {
-            loadMazeDialogInfoText.text = $"Choose a saved maze ({files.Length}):";
+            loadMazeDialogInfoText.text = TextByLanguage(
+                $"Wybierz zapisany labirynt ({files.Length}):",
+                $"Choose a saved maze ({files.Length}):");
             loadMazeDialogInfoText.color = Color.white;
         }
     }
@@ -261,7 +296,7 @@ public partial class MazeAppController
         {
             if (loadMazeDialogInfoText != null)
             {
-                loadMazeDialogInfoText.text = "Selected file does not exist.";
+                loadMazeDialogInfoText.text = TextByLanguage("Wybrany plik nie istnieje.", "Selected file does not exist.");
                 loadMazeDialogInfoText.color = new Color(1f, 0.45f, 0.45f, 1f);
             }
 
@@ -275,20 +310,22 @@ public partial class MazeAppController
 
             if (data.width <= 0 || data.height <= 0 || data.walkableCells == null)
             {
-                throw new InvalidDataException("Invalid maze data.");
+                throw new InvalidDataException(TextByLanguage("Nieprawidłowe dane labiryntu.", "Invalid maze data."));
             }
 
             if (data.width < minMazeSize || data.width > maxMazeSize ||
                 data.height < minMazeSize || data.height > maxMazeSize)
             {
                 throw new InvalidDataException(
-                    $"Maze size {data.width}x{data.height} is outside supported range {minMazeSize}-{maxMazeSize}.");
+                    TextByLanguage(
+                        $"Rozmiar labiryntu {data.width}x{data.height} jest poza obsługiwanym zakresem {minMazeSize}-{maxMazeSize}.",
+                        $"Maze size {data.width}x{data.height} is outside supported range {minMazeSize}-{maxMazeSize}."));
             }
 
             int requiredCellCount = data.width * data.height;
             if (data.walkableCells.Length != requiredCellCount)
             {
-                throw new InvalidDataException("Maze cell count mismatch.");
+                throw new InvalidDataException(TextByLanguage("Liczba pól labiryntu jest niezgodna z rozmiarem.", "Maze cell count mismatch."));
             }
 
             mazeWidth = data.width;
@@ -345,7 +382,7 @@ public partial class MazeAppController
         {
             if (loadMazeDialogInfoText != null)
             {
-                loadMazeDialogInfoText.text = $"Failed to load: {ex.Message}";
+                loadMazeDialogInfoText.text = TextByLanguage($"Błąd wczytywania: {ex.Message}", $"Failed to load: {ex.Message}");
                 loadMazeDialogInfoText.color = new Color(1f, 0.45f, 0.45f, 1f);
             }
         }

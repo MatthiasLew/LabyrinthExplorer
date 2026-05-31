@@ -96,7 +96,7 @@ public partial class MazeAppController
                 break;
 
             default:
-                UpdateInfo("Najpierw wybierz narzędzie.");
+                UpdateInfo(TextByLanguage("Najpierw wybierz narzędzie.", "Select a tool first."));
                 break;
         }
     }
@@ -128,7 +128,7 @@ public partial class MazeAppController
 
         if (activeTool != EditorTool.DrawWalls && activeTool != EditorTool.DeleteWalls)
         {
-            UpdateInfo("Najpierw wybierz narzędzie.");
+            UpdateInfo(TextByLanguage("Najpierw wybierz narzędzie.", "Select a tool first."));
             return;
         }
 
@@ -167,7 +167,7 @@ public partial class MazeAppController
     {
         if (position == startPosition || position == finishPosition)
         {
-            UpdateInfo("Nie można ustawić ściany na starcie lub mecie.");
+            UpdateInfo(TextByLanguage("Nie można ustawić ściany na starcie lub mecie.", "A wall cannot be placed on the start or finish cell."));
             return;
         }
 
@@ -216,7 +216,7 @@ public partial class MazeAppController
         {
             if (position == finishPosition)
             {
-                UpdateInfo("Start nie może być na mecie.");
+                UpdateInfo(TextByLanguage("Start nie może być na mecie.", "Start cannot be placed on the finish cell."));
                 return;
             }
 
@@ -231,13 +231,13 @@ public partial class MazeAppController
             RebuildRunnerGrids();
             InvalidateDisplayedBenchmark();
 
-            UpdateInfo($"Start ustawiony: {startPosition}\nNastępnie ustaw metę.");
+            UpdateInfo(TextByLanguage($"Start ustawiony: {startPosition}\nNastępnie ustaw metę.", $"Start set: {startPosition}\nNow set the finish point."));
             return;
         }
 
         if (position == startPosition)
         {
-            UpdateInfo("Meta nie może być na starcie.");
+            UpdateInfo(TextByLanguage("Meta nie może być na starcie.", "Finish cannot be placed on the start cell."));
             return;
         }
 
@@ -252,7 +252,7 @@ public partial class MazeAppController
         RebuildRunnerGrids();
         InvalidateDisplayedBenchmark();
 
-        UpdateInfo($"Meta ustawiona: {finishPosition}\nNastępnie ustaw start.");
+        UpdateInfo(TextByLanguage($"Meta ustawiona: {finishPosition}\nNastępnie ustaw start.", $"Finish set: {finishPosition}\nNow set the start point."));
     }
 
     private void RefreshAllTiles()

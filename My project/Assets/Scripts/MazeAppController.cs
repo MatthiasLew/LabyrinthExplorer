@@ -253,7 +253,7 @@ public partial class MazeAppController : MonoBehaviour
         }
 
         RebuildRunnerGrids();
-        UpdateInfo("Mapa gotowa.");
+        UpdateInfo(TextByLanguage("Mapa gotowa.", "Maze ready."));
     }
 
     private void Update()

@@ -82,7 +82,7 @@ public partial class MazeAppController
         ClearGridVisuals(algorithmBGrid);
 
         InvalidateDisplayedBenchmark();
-        UpdateInfo("Labirynt usunięty.");
+        UpdateInfo(TextByLanguage("Labirynt usunięty.", "Maze removed."));
     }
 
     public void DeleteMazeFromEditor()
@@ -111,14 +111,14 @@ public partial class MazeAppController
         RefreshAllTiles();
         RebuildRunnerGrids();
         InvalidateDisplayedBenchmark();
-        UpdateInfo("Wyczyszczono labirynt.");
+        UpdateInfo(TextByLanguage("Wyczyszczono labirynt.", "Maze cleared."));
     }
 
     public void SaveMaze()
     {
         if (!EnsureMazeExists())
         {
-            UpdateInfo("Brak labiryntu do zapisu.");
+            UpdateInfo(TextByLanguage("Brak labiryntu do zapisu.", "There is no maze to save."));
             return;
         }
 
@@ -127,18 +127,20 @@ public partial class MazeAppController
 
     public void ToggleDrawMode()
     {
-        SetTool(EditorTool.DrawWalls, "Tryb rysowania ścian.");
+        SetTool(EditorTool.DrawWalls, TextByLanguage("Tryb rysowania ścian.", "Wall drawing mode."));
     }
 
     public void EnableDeleteMode()
     {
-        SetTool(EditorTool.DeleteWalls, "Tryb usuwania ścian.");
+        SetTool(EditorTool.DeleteWalls, TextByLanguage("Tryb usuwania ścian.", "Wall erasing mode."));
     }
 
     public void ToggleStartFinishMode()
     {
-        string next = placeStartNext ? "START" : "FINISH";
-        SetTool(EditorTool.SetStartFinish, $"Tryb start/meta. Następny punkt: {next}.");
+        string next = placeStartNext ? "START" : TextByLanguage("META", "FINISH");
+        SetTool(
+            EditorTool.SetStartFinish,
+            TextByLanguage($"Tryb start/meta. Następny punkt: {next}.", $"Start/finish mode. Next point: {next}."));
     }
 
     public void GenerateRandomMaze()
@@ -177,11 +179,13 @@ public partial class MazeAppController
             RebuildRunnerGrids();
             InvalidateDisplayedBenchmark();
 
-            UpdateInfo($"Wygenerowano labirynt (algorytm DFS).\nSeed: {seedToUse}\nStart: {startPosition}, Meta: {finishPosition}");
+            UpdateInfo(TextByLanguage(
+                $"Wygenerowano labirynt (algorytm DFS).\nSeed: {seedToUse}\nStart: {startPosition}, Meta: {finishPosition}",
+                $"Generated maze (DFS algorithm).\nSeed: {seedToUse}\nStart: {startPosition}, Finish: {finishPosition}"));
         }
         catch (Exception ex)
         {
-            UpdateInfo($"Błąd przy generowaniu labiryntu: {ex.Message}");
+            UpdateInfo(TextByLanguage($"Błąd przy generowaniu labiryntu: {ex.Message}", $"Maze generation failed: {ex.Message}"));
             Debug.LogError($"Maze generation failed: {ex}");
         }
     }
@@ -299,7 +303,7 @@ public partial class MazeAppController
         SyncMazeSizeDropdownSelection();
         SetCurrentMazeName(string.Empty);
 
-        UpdateInfo($"Utworzono labirynt {mazeWidth}x{mazeHeight}.");
+        UpdateInfo(TextByLanguage($"Utworzono labirynt {mazeWidth}x{mazeHeight}.", $"Created maze {mazeWidth}x{mazeHeight}."));
     }
 
     private bool EnsureMazeExists()

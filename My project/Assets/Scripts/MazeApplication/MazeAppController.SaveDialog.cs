@@ -18,21 +18,27 @@ using UnityEngine.UI;
 /// </summary>
 public partial class MazeAppController
 {
+    private TMP_Text saveDialogTitleText;
+    private TMP_Text saveDialogPlaceholderText;
+    private TMP_Text saveDialogConfirmButtonText;
+    private TMP_Text saveDialogCancelButtonText;
+
     private void ShowSaveDialog()
     {
         if (mapEditorPanel == null)
         {
-            UpdateInfo("Nie znaleziono panelu edytora.");
+            UpdateInfo(TextByLanguage("Nie znaleziono panelu edytora.", "Maze editor panel not found."));
             return;
         }
 
         EnsureSaveDialogBuilt();
         if (saveDialogOverlay == null)
         {
-            UpdateInfo("Nie można utworzyć okna zapisu.");
+            UpdateInfo(TextByLanguage("Nie można utworzyć okna zapisu.", "Unable to create save dialog."));
             return;
         }
 
+        UpdateSaveDialogLanguage();
         saveDialogOverlay.SetActive(true);
         saveDialogOverlay.transform.SetAsLastSibling();
 
@@ -44,7 +50,9 @@ public partial class MazeAppController
 
         if (saveDialogInfoText != null)
         {
-            saveDialogInfoText.text = $"Enter maze name (minimum {MinSaveNameLength} characters).";
+            saveDialogInfoText.text = TextByLanguage(
+                $"Wprowadź nazwę labiryntu (minimum {MinSaveNameLength} znaki).",
+                $"Enter maze name (minimum {MinSaveNameLength} characters).");
             saveDialogInfoText.color = Color.white;
         }
     }
@@ -67,7 +75,7 @@ public partial class MazeAppController
         TMP_FontAsset defaultFont = TMP_Settings.defaultFontAsset;
         if (defaultFont == null)
         {
-            UpdateInfo("Brakuje domyślnej czcionki TMP.");
+            UpdateInfo(TextByLanguage("Brakuje domyślnej czcionki TMP.", "Default TMP font is missing."));
             return;
         }
 
@@ -103,8 +111,9 @@ public partial class MazeAppController
         titleRect.anchoredPosition = new Vector2(0f, -20f);
 
         TMP_Text titleText = titleObject.GetComponent<TextMeshProUGUI>();
+        saveDialogTitleText = titleText;
         titleText.font = defaultFont;
-        titleText.text = "Save Maze";
+        titleText.text = TextByLanguage("Zapisz labirynt", "Save Maze");
         titleText.fontSize = 34f;
         titleText.alignment = TextAlignmentOptions.Center;
         titleText.color = Color.white;
@@ -154,11 +163,12 @@ public partial class MazeAppController
         placeholderRect.anchorMax = Vector2.one;
         placeholderRect.offsetMin = Vector2.zero;
         placeholderRect.offsetMax = Vector2.zero;
+        saveDialogPlaceholderText = placeholder;
         placeholder.font = defaultFont;
         placeholder.fontSize = 24f;
         placeholder.alignment = TextAlignmentOptions.Left;
         placeholder.color = new Color(1f, 1f, 1f, 0.45f);
-        placeholder.text = "Maze name...";
+        placeholder.text = TextByLanguage("Nazwa labiryntu...", "Maze name...");
 
         inputField.textViewport = textArea;
         inputField.textComponent = textComponent;
@@ -180,8 +190,20 @@ public partial class MazeAppController
         saveDialogInfoText.color = Color.white;
         saveDialogInfoText.text = string.Empty;
 
-        saveDialogConfirmButton = CreateDialogButton(panelRect, "Save", new Vector2(130f, -100f), ConfirmSaveFromDialog, defaultFont);
-        saveDialogCancelButton = CreateDialogButton(panelRect, "Cancel", new Vector2(-130f, -100f), HideSaveDialog, defaultFont);
+        saveDialogConfirmButton = CreateDialogButton(
+            panelRect,
+            TextByLanguage("Zapisz", "Save"),
+            new Vector2(130f, -100f),
+            ConfirmSaveFromDialog,
+            defaultFont);
+        saveDialogCancelButton = CreateDialogButton(
+            panelRect,
+            TextByLanguage("Anuluj", "Cancel"),
+            new Vector2(-130f, -100f),
+            HideSaveDialog,
+            defaultFont);
+        saveDialogConfirmButtonText = saveDialogConfirmButton.GetComponentInChildren<TMP_Text>(true);
+        saveDialogCancelButtonText = saveDialogCancelButton.GetComponentInChildren<TMP_Text>(true);
 
         saveNameInputField = inputField;
         saveDialogOverlay.SetActive(false);
@@ -226,6 +248,29 @@ public partial class MazeAppController
         return button;
     }
 
+    private void UpdateSaveDialogLanguage()
+    {
+        if (saveDialogTitleText != null)
+        {
+            saveDialogTitleText.text = TextByLanguage("Zapisz labirynt", "Save Maze");
+        }
+
+        if (saveDialogPlaceholderText != null)
+        {
+            saveDialogPlaceholderText.text = TextByLanguage("Nazwa labiryntu...", "Maze name...");
+        }
+
+        if (saveDialogConfirmButtonText != null)
+        {
+            saveDialogConfirmButtonText.text = TextByLanguage("Zapisz", "Save");
+        }
+
+        if (saveDialogCancelButtonText != null)
+        {
+            saveDialogCancelButtonText.text = TextByLanguage("Anuluj", "Cancel");
+        }
+    }
+
     private void ConfirmSaveFromDialog()
     {
         if (!EnsureMazeExists() || saveNameInputField == null)
@@ -237,20 +282,20 @@ public partial class MazeAppController
 
         if (mazeName.Length < MinSaveNameLength)
         {
-            SetSaveDialogInfo($"Name must have at least {MinSaveNameLength} characters.", true);
+            SetSaveDialogInfo(TextByLanguage($"Nazwa musi mieć co najmniej {MinSaveNameLength} znaki.", $"Name must have at least {MinSaveNameLength} characters."), true);
             return;
         }
 
         if (ContainsInvalidFileNameChars(mazeName))
         {
-            SetSaveDialogInfo("Name contains invalid characters for file name.", true);
+            SetSaveDialogInfo(TextByLanguage("Nazwa zawiera niedozwolone znaki.", "Name contains invalid characters for file name."), true);
             return;
         }
 
         string fullPath = GetMazeSavePath(mazeName);
         if (File.Exists(fullPath))
         {
-            SetSaveDialogInfo("Maze with this name already exists. Choose another name.", true);
+            SetSaveDialogInfo(TextByLanguage("Labirynt o tej nazwie już istnieje. Wybierz inną nazwę.", "Maze with this name already exists. Choose another name."), true);
             return;
         }
 
@@ -263,11 +308,11 @@ public partial class MazeAppController
             SetCurrentMazeName(mazeName);
 
             HideSaveDialog();
-            UpdateInfo($"Zapisano labirynt:\n{mazeName}");
+            UpdateInfo(TextByLanguage($"Zapisano labirynt:\n{mazeName}", $"Saved maze:\n{mazeName}"));
         }
         catch (Exception ex)
         {
-            SetSaveDialogInfo($"Save failed: {ex.Message}", true);
+            SetSaveDialogInfo(TextByLanguage($"Błąd zapisu: {ex.Message}", $"Save failed: {ex.Message}"), true);
         }
     }
 

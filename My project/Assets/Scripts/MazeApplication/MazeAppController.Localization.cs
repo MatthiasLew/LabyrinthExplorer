@@ -1,23 +1,17 @@
-using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.IO;
-using Algorytm.Dane;
-using Algorytm.Genetyczny;
-using Algorytm.Mrówkowy;
-using Algorytm.System;
-using Statistics;
 using TMPro;
 using UnityEngine;
-using UnityEngine.Events;
-using UnityEngine.UI;
 
 /// <summary>
-/// Lokalizacja statycznych tekstów interfejsu.
+/// Lokalizacja statycznych tekstów interfejsu oraz wspólne pomocnicze metody językowe.
 /// Oddzielna odpowiedzialność fasady sceny; zachowuje kompatybilność z powiązaniami Unity Inspector.
 /// </summary>
 public partial class MazeAppController
 {
+    private string TextByLanguage(string polish, string english)
+    {
+        return currentLanguage == AppLanguage.Polski ? polish : english;
+    }
+
     private void ApplyLanguageToAllTexts()
     {
         TMP_Text[] texts = Resources.FindObjectsOfTypeAll<TMP_Text>();
@@ -38,6 +32,9 @@ public partial class MazeAppController
 
             text.text = TranslateStaticText(text.text);
         }
+
+        UpdateSaveDialogLanguage();
+        UpdateLoadMazeDialogLanguage();
 
         if (lastComparisonResult != null)
         {
@@ -73,7 +70,9 @@ public partial class MazeAppController
                 case "Dodaj Labirynt": return "Add Maze";
                 case "Rysowanie": return "Draw";
                 case "Usuwanie": return "Erase";
-                case "Dodaj Start/Mete": return "Set Start/Finish";
+                case "Dodaj Start/Mete":
+                case "Dodaj Start/Metę":
+                case "Ustaw start/metę": return "Set Start/Finish";
                 case "Generuj Losowo": return "Random Maze";
                 case "Zapisz Labirynt": return "Save Maze";
                 case "Usuń Labirynt": return "Delete Maze";
@@ -103,7 +102,9 @@ public partial class MazeAppController
             case "Add Maze": return "Dodaj Labirynt";
             case "Draw": return "Rysowanie";
             case "Erase": return "Usuwanie";
-            case "Set Start/Finish": return "Dodaj Start/Mete";
+            case "Set Start/Finish": return "Ustaw start/metę";
+            case "Dodaj Start/Mete":
+            case "Dodaj Start/Metę": return "Ustaw start/metę";
             case "Random Maze": return "Generuj Losowo";
             case "Save Maze": return "Zapisz Labirynt";
             case "Delete Maze": return "Usuń Labirynt";
@@ -122,5 +123,4 @@ public partial class MazeAppController
             .Replace("Algorithm", "Algorytm")
             .Replace("Maze", "Labirynt");
     }
-
 }

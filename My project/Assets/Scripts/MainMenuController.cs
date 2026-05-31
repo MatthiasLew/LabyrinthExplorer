@@ -1,3 +1,4 @@
+using TMPro;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -30,11 +31,13 @@ public class MainMenuController : MonoBehaviour
 
     private const string ResolutionPrefKey = "settings_resolution_index";
     private const string FullscreenPrefKey = "settings_fullscreen";
+    private const string LanguagePrefKey = "settings_language";
 
     private void Start()
     {
         ApplySavedDisplaySettings();
         ConfigureAllCanvasScalers();
+        ApplySavedLanguage();
     }
 
     private static void ApplySavedDisplaySettings()
@@ -72,6 +75,51 @@ public class MainMenuController : MonoBehaviour
         Canvas.ForceUpdateCanvases();
     }
 
+    private static void ApplySavedLanguage()
+    {
+        bool english = PlayerPrefs.GetInt(LanguagePrefKey, 0) == 1;
+        TMP_Text[] texts = Resources.FindObjectsOfTypeAll<TMP_Text>();
+
+        for (int i = 0; i < texts.Length; i++)
+        {
+            TMP_Text text = texts[i];
+            if (text == null || !text.gameObject.scene.IsValid())
+            {
+                continue;
+            }
+
+            text.text = TranslateMenuText(text.text, english);
+        }
+    }
+
+    private static string TranslateMenuText(string input, bool english)
+    {
+        if (english)
+        {
+            switch (input)
+            {
+                case "Edytor Labiryntów": return "Maze Editor";
+                case "Wyniki Pomiarów": return "Measurement Results";
+                case "Wyjście": return "Exit";
+                case "Ustawienia": return "Settings";
+                case "Rozpocznij Pomiary": return "Start Measurements";
+            }
+        }
+        else
+        {
+            switch (input)
+            {
+                case "Maze Editor": return "Edytor Labiryntów";
+                case "Measurement Results": return "Wyniki Pomiarów";
+                case "Exit": return "Wyjście";
+                case "Settings": return "Ustawienia";
+                case "Start Measurements": return "Rozpocznij Pomiary";
+            }
+        }
+
+        return input;
+    }
+
     public void OpenMeasurements()
     {
         AppUIManager.panelToOpen = AppUIManager.PanelType.MazeRunner;
@@ -103,6 +151,6 @@ public class MainMenuController : MonoBehaviour
     public void QuitApp()
     {
         Application.Quit();
-        Debug.Log("Wyjscie z aplikacji.");
+        Debug.Log(PlayerPrefs.GetInt(LanguagePrefKey, 0) == 1 ? "Application closed." : "Wyjście z aplikacji.");
     }
 }
